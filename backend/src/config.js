@@ -4,7 +4,8 @@ const ROOT_DIR = path.resolve(__dirname, "..");
 require("dotenv").config({ path: path.join(ROOT_DIR, ".env") });
 
 const config = {
-  port: Number(process.env.PORT || 3001),
+  port: Number(process.env.PORT || 3002),
+  host: process.env.HOST || "0.0.0.0",
   simulationIntervalMs: Number(process.env.SIMULATION_INTERVAL_MS || 10_000),
   mysql: {
     embedded: String(process.env.MYSQL_EMBEDDED || "true").toLowerCase() !== "false",

@@ -5,3 +5,11 @@ frontend/dist
 .npm-cache
 backend/.npm-cache
 frontend/.npm-cache
+backend/.env
+backend/data/mysql-local-runtime
+backend/data/mysql-runtime
+backend/data/mysql57
+backend/data/mysql
+*.pid
+*.err
+*.log

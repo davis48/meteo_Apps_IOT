@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 const http = require("http");
+const path = require("path");
+const fs = require("fs");
 const { WebSocketServer } = require("ws");
 const { z } = require("zod");
 const { config } = require("./config");
@@ -28,6 +30,7 @@ const {
   calculateAnomalyScore,
   generateSensorReading,
 } = require("./generator");
+const aiEngine = require("./ai-engine");
 
 const app = express();
 const server = http.createServer(app);
@@ -37,6 +40,12 @@ let simulationTimer = null;
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
+
+// ─── Servir le frontend buildé en production ────────────────────────────────
+const FRONTEND_DIST = path.resolve(__dirname, "../../frontend/dist");
+if (fs.existsSync(FRONTEND_DIST)) {
+  app.use(express.static(FRONTEND_DIST));
+}
 
 function toUnix(value) {
   const n = Number(value);
@@ -172,7 +181,22 @@ async function materializeReading(payload) {
 
 async function ingestReading(readingPayload, source = "api", shouldBroadcast = true) {
   const { reading, previous } = await materializeReading(readingPayload);
+
+  // ── AI Engine: analyse approfondie ──────────────────────────────────────
+  const aiAnalysis = aiEngine.analyzeReading(reading.node_id, reading, previous);
+  reading.anomaly_score = aiAnalysis.anomaly_score;
+  reading.is_anomaly = aiAnalysis.is_anomaly ? 1 : 0;
+  aiEngine.pushToWindow(reading.node_id, reading);
+
   const insertedReading = await insertSensorData(db, reading, source);
+
+  // Enrichir la réponse avec les détails IA
+  insertedReading.ai_analysis = {
+    risk_level: aiAnalysis.risk_level,
+    factors: aiAnalysis.factors,
+    recommendations: aiAnalysis.recommendations,
+  };
+
   const possibleAlerts = buildAlertsFromReading(insertedReading, previous);
   const createdAlerts = [];
 
@@ -441,6 +465,28 @@ app.get("/api/ai/metrics", async (_req, res) => {
   sendJson(res, 200, { data });
 });
 
+// ─── AI Engine API ──────────────────────────────────────────────────────────
+
+app.get("/api/ai/analyze/:nodeId", async (req, res) => {
+  const reading = await getLastSensorReadingForNode(db, req.params.nodeId);
+  if (!reading) return sendJson(res, 404, { error: "No data for this node" });
+  const win = aiEngine.getWindow(req.params.nodeId);
+  const prev = win.length >= 2 ? win[win.length - 2] : null;
+  const analysis = aiEngine.analyzeReading(req.params.nodeId, reading, prev);
+  sendJson(res, 200, { data: { reading, analysis } });
+});
+
+app.get("/api/ai/predict/:nodeId", async (req, res) => {
+  const predictions = aiEngine.predictForNode(req.params.nodeId);
+  if (!predictions) return sendJson(res, 404, { error: "Not enough data for predictions (need at least 3 readings)" });
+  sendJson(res, 200, { data: predictions });
+});
+
+app.get("/api/ai/diagnose/:nodeId", async (req, res) => {
+  const diag = aiEngine.diagnoseNode(req.params.nodeId);
+  sendJson(res, 200, { data: diag });
+});
+
 // ─── DB Admin Viewer ────────────────────────────────────────────────────────
 
 app.get("/db-admin/api/tables", async (_req, res) => {
@@ -648,6 +694,16 @@ loadTables();
 </html>`);
 });
 
+// ─── SPA Fallback (en production, toute route non-API sert index.html) ────
+if (fs.existsSync(FRONTEND_DIST)) {
+  app.get("/{*path}", (req, res, next) => {
+    if (req.path.startsWith("/api/") || req.path.startsWith("/db-admin")) {
+      return next();
+    }
+    res.sendFile(path.join(FRONTEND_DIST, "index.html"));
+  });
+}
+
 // ─── 404 & Error handlers ────────────────────────────────────────────────────
 
 app.use((req, res) => {
@@ -690,12 +746,17 @@ async function bootstrap() {
   db = await createDatabase(config.mysql);
   await startSimulator();
 
-  server.listen(config.port, () => {
-    console.log(`Meteo backend running on http://localhost:${config.port}`);
+  server.listen(config.port, config.host, () => {
+    console.log(`Meteo backend running on http://${config.host}:${config.port}`);
     console.log(`MySQL mode: ${db.runtime.mode}`);
     console.log(
       `MySQL: ${db.runtime.user}@${db.runtime.host}:${db.runtime.port}/${db.runtime.database}`
     );
+    if (fs.existsSync(FRONTEND_DIST)) {
+      console.log(`Frontend: serving from ${FRONTEND_DIST}`);
+    } else {
+      console.log(`Frontend: dist not found — use Vite dev server or run "npm run build" in frontend/`);
+    }
   });
 }
 
