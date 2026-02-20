@@ -1,0 +1,85 @@
+2026-02-20T13:18:44.984557Z 0 [Note] --secure-file-priv is set to NULL. Operations related to importing and exporting data are disabled
+2026-02-20T13:18:44.985477Z 0 [Note] /Users/amalamanemmanueljeandavid/meteo-iot-platform/node_modules/mysql-server-5.7-osx-x64/server/mysqld (mysqld 5.7.22) starting as process 20543 ...
+2026-02-20T13:18:44.993485Z 0 [Warning] Setting lower_case_table_names=2 because file system for /Users/amalamanemmanueljeandavid/meteo-iot-platform/backend/data/mysql57/data/ is case insensitive
+2026-02-20T13:18:44.999126Z 0 [Note] InnoDB: Mutexes and rw_locks use GCC atomic builtins
+2026-02-20T13:18:44.999325Z 0 [Note] InnoDB: Uses event mutexes
+2026-02-20T13:18:44.999330Z 0 [Note] InnoDB: GCC builtin __atomic_thread_fence() is used for memory barrier
+2026-02-20T13:18:44.999333Z 0 [Note] InnoDB: Compressed tables use zlib 1.2.3
+2026-02-20T13:18:45.001182Z 0 [Note] InnoDB: Number of pools: 1
+2026-02-20T13:18:45.002389Z 0 [Note] InnoDB: Using CPU crc32 instructions
+2026-02-20T13:18:45.004275Z 0 [Note] InnoDB: Initializing buffer pool, total size = 128M, instances = 1, chunk size = 128M
+2026-02-20T13:18:45.008817Z 0 [Note] InnoDB: Completed initialization of buffer pool
+2026-02-20T13:18:45.024520Z 0 [Note] InnoDB: Highest supported file format is Barracuda.
+2026-02-20T13:18:45.039870Z 0 [Note] InnoDB: Creating shared tablespace for temporary tables
+2026-02-20T13:18:45.039996Z 0 [Note] InnoDB: Setting file './ibtmp1' size to 12 MB. Physically writing the file full; Please wait ...
+2026-02-20T13:18:45.043201Z 0 [Note] InnoDB: File './ibtmp1' size is now 12 MB.
+2026-02-20T13:18:45.043610Z 0 [Note] InnoDB: 96 redo rollback segment(s) found. 96 redo rollback segment(s) are active.
+2026-02-20T13:18:45.043617Z 0 [Note] InnoDB: 32 non-redo rollback segment(s) are active.
+2026-02-20T13:18:45.043790Z 0 [Note] InnoDB: Waiting for purge to start
+2026-02-20T13:18:45.095438Z 0 [Note] InnoDB: 5.7.22 started; log sequence number 2589175
+2026-02-20T13:18:45.095860Z 0 [Note] InnoDB: Loading buffer pool(s) from /Users/amalamanemmanueljeandavid/meteo-iot-platform/backend/data/mysql57/data/ib_buffer_pool
+2026-02-20T13:18:45.096436Z 0 [Note] Plugin 'FEDERATED' is disabled.
+2026-02-20T13:18:45.105844Z 0 [Note] InnoDB: Buffer pool(s) load completed at 260220 13:18:45
+2026-02-20T13:18:45.109361Z 0 [Warning] Failed to set up SSL because of the following SSL library error: SSL context is not usable without certificate and private key
+2026-02-20T13:18:45.109478Z 0 [Note] Server hostname (bind-address): '127.0.0.1'; port: 3307
+2026-02-20T13:18:45.110101Z 0 [Note]   - '127.0.0.1' resolves to '127.0.0.1';
+2026-02-20T13:18:45.110144Z 0 [Note] Server socket created on IP: '127.0.0.1'.
+2026-02-20T13:18:45.135308Z 0 [Note] Event Scheduler: Loaded 0 events
+2026-02-20T13:18:45.135420Z 0 [Note] /Users/amalamanemmanueljeandavid/meteo-iot-platform/node_modules/mysql-server-5.7-osx-x64/server/mysqld: ready for connections.
+Version: '5.7.22'  socket: ''  port: 3307  MySQL Community Server (GPL)
+2026-02-20T13:19:11.024124Z 0 [Note] Giving 0 client threads a chance to die gracefully
+2026-02-20T13:19:11.024310Z 0 [Note] Shutting down slave threads
+2026-02-20T13:19:11.024452Z 0 [Note] Forcefully disconnecting 0 remaining clients
+2026-02-20T13:19:11.024475Z 0 [Note] Event Scheduler: Purging the queue. 0 events
+2026-02-20T13:19:11.024558Z 0 [Note] Binlog end
+2026-02-20T13:19:11.025496Z 0 [Note] Shutting down plugin 'ngram'
+2026-02-20T13:19:11.025513Z 0 [Note] Shutting down plugin 'partition'
+2026-02-20T13:19:11.025521Z 0 [Note] Shutting down plugin 'BLACKHOLE'
+2026-02-20T13:19:11.025527Z 0 [Note] Shutting down plugin 'ARCHIVE'
+2026-02-20T13:19:11.025531Z 0 [Note] Shutting down plugin 'PERFORMANCE_SCHEMA'
+2026-02-20T13:19:11.025544Z 0 [Note] Shutting down plugin 'MRG_MYISAM'
+2026-02-20T13:19:11.025551Z 0 [Note] Shutting down plugin 'MyISAM'
+2026-02-20T13:19:11.025573Z 0 [Note] Shutting down plugin 'INNODB_SYS_VIRTUAL'
+2026-02-20T13:19:11.025580Z 0 [Note] Shutting down plugin 'INNODB_SYS_DATAFILES'
+2026-02-20T13:19:11.025584Z 0 [Note] Shutting down plugin 'INNODB_SYS_TABLESPACES'
+2026-02-20T13:19:11.025598Z 0 [Note] Shutting down plugin 'INNODB_SYS_FOREIGN_COLS'
+2026-02-20T13:19:11.025601Z 0 [Note] Shutting down plugin 'INNODB_SYS_FOREIGN'
+2026-02-20T13:19:11.025605Z 0 [Note] Shutting down plugin 'INNODB_SYS_FIELDS'
+2026-02-20T13:19:11.025608Z 0 [Note] Shutting down plugin 'INNODB_SYS_COLUMNS'
+2026-02-20T13:19:11.025609Z 0 [Note] Shutting down plugin 'INNODB_SYS_INDEXES'
+2026-02-20T13:19:11.025611Z 0 [Note] Shutting down plugin 'INNODB_SYS_TABLESTATS'
+2026-02-20T13:19:11.025613Z 0 [Note] Shutting down plugin 'INNODB_SYS_TABLES'
+2026-02-20T13:19:11.025615Z 0 [Note] Shutting down plugin 'INNODB_FT_INDEX_TABLE'
+2026-02-20T13:19:11.025618Z 0 [Note] Shutting down plugin 'INNODB_FT_INDEX_CACHE'
+2026-02-20T13:19:11.025620Z 0 [Note] Shutting down plugin 'INNODB_FT_CONFIG'
+2026-02-20T13:19:11.025622Z 0 [Note] Shutting down plugin 'INNODB_FT_BEING_DELETED'
+2026-02-20T13:19:11.025624Z 0 [Note] Shutting down plugin 'INNODB_FT_DELETED'
+2026-02-20T13:19:11.025626Z 0 [Note] Shutting down plugin 'INNODB_FT_DEFAULT_STOPWORD'
+2026-02-20T13:19:11.025628Z 0 [Note] Shutting down plugin 'INNODB_METRICS'
+2026-02-20T13:19:11.025630Z 0 [Note] Shutting down plugin 'INNODB_TEMP_TABLE_INFO'
+2026-02-20T13:19:11.025632Z 0 [Note] Shutting down plugin 'INNODB_BUFFER_POOL_STATS'
+2026-02-20T13:19:11.025634Z 0 [Note] Shutting down plugin 'INNODB_BUFFER_PAGE_LRU'
+2026-02-20T13:19:11.025636Z 0 [Note] Shutting down plugin 'INNODB_BUFFER_PAGE'
+2026-02-20T13:19:11.025638Z 0 [Note] Shutting down plugin 'INNODB_CMP_PER_INDEX_RESET'
+2026-02-20T13:19:11.025639Z 0 [Note] Shutting down plugin 'INNODB_CMP_PER_INDEX'
+2026-02-20T13:19:11.025641Z 0 [Note] Shutting down plugin 'INNODB_CMPMEM_RESET'
+2026-02-20T13:19:11.025643Z 0 [Note] Shutting down plugin 'INNODB_CMPMEM'
+2026-02-20T13:19:11.025645Z 0 [Note] Shutting down plugin 'INNODB_CMP_RESET'
+2026-02-20T13:19:11.025647Z 0 [Note] Shutting down plugin 'INNODB_CMP'
+2026-02-20T13:19:11.025649Z 0 [Note] Shutting down plugin 'INNODB_LOCK_WAITS'
+2026-02-20T13:19:11.025650Z 0 [Note] Shutting down plugin 'INNODB_LOCKS'
+2026-02-20T13:19:11.025652Z 0 [Note] Shutting down plugin 'INNODB_TRX'
+2026-02-20T13:19:11.025654Z 0 [Note] Shutting down plugin 'InnoDB'
+2026-02-20T13:19:11.025869Z 0 [Note] InnoDB: FTS optimize thread exiting.
+2026-02-20T13:19:11.025924Z 0 [Note] InnoDB: Starting shutdown...
+2026-02-20T13:19:11.129736Z 0 [Note] InnoDB: Dumping buffer pool(s) to /Users/amalamanemmanueljeandavid/meteo-iot-platform/backend/data/mysql57/data/ib_buffer_pool
+2026-02-20T13:19:11.130184Z 0 [Note] InnoDB: Buffer pool(s) dump completed at 260220 13:19:11
+2026-02-20T13:19:11.657550Z 0 [Note] InnoDB: Shutdown completed; log sequence number 2589219
+2026-02-20T13:19:11.657764Z 0 [Note] InnoDB: Removed temporary tablespace data file: "ibtmp1"
+2026-02-20T13:19:11.657776Z 0 [Note] Shutting down plugin 'MEMORY'
+2026-02-20T13:19:11.657784Z 0 [Note] Shutting down plugin 'CSV'
+2026-02-20T13:19:11.657789Z 0 [Note] Shutting down plugin 'sha256_password'
+2026-02-20T13:19:11.657792Z 0 [Note] Shutting down plugin 'mysql_native_password'
+2026-02-20T13:19:11.657867Z 0 [Note] Shutting down plugin 'binlog'
+2026-02-20T13:19:11.659084Z 0 [Note] /Users/amalamanemmanueljeandavid/meteo-iot-platform/node_modules/mysql-server-5.7-osx-x64/server/mysqld: Shutdown complete
+

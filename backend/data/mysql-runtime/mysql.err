@@ -1,0 +1,11 @@
+2026-02-20T13:15:22.788815Z 0 [System] [MY-010116] [Server] /Users/amalamanemmanueljeandavid/meteo-iot-platform/node_modules/mysql-server-8-osx-x64/server/mysqld (mysqld 8.0.29) starting as process 14678
+2026-02-20T13:15:22.790716Z 0 [Warning] [MY-010159] [Server] Setting lower_case_table_names=2 because file system for /Users/amalamanemmanueljeandavid/meteo-iot-platform/backend/data/mysql-runtime/data/ is case insensitive
+2026-02-20T13:15:22.794165Z 1 [System] [MY-013576] [InnoDB] InnoDB initialization has started.
+2026-02-20T13:15:22.842593Z 1 [System] [MY-013577] [InnoDB] InnoDB initialization has ended.
+2026-02-20T13:15:22.950331Z 0 [Warning] [MY-013829] [Server] Missing data directory for ICU regular expressions: /Users/amalamanemmanueljeandavid/meteo-iot-platform/node_modules/mysql-server-8-osx-x64/server/lib/private/.
+2026-02-20T13:15:22.951340Z 0 [Warning] [MY-010068] [Server] CA certificate ca.pem is self signed.
+2026-02-20T13:15:22.951384Z 0 [System] [MY-013602] [Server] Channel mysql_main configured to support TLS. Encrypted connections are now supported for this channel.
+2026-02-20T13:15:22.952430Z 0 [ERROR] [MY-010270] [Server] Can't start server : Bind on unix socket: Operation not permitted
+2026-02-20T13:15:22.952441Z 0 [ERROR] [MY-010258] [Server] Do you already have another mysqld server running on socket: /Users/amalamanemmanueljeandavid/meteo-iot-platform/backend/data/mysql-runtime/mysql.sock ?
+2026-02-20T13:15:22.952581Z 0 [ERROR] [MY-010119] [Server] Aborting
+2026-02-20T13:15:23.967797Z 0 [System] [MY-010910] [Server] /Users/amalamanemmanueljeandavid/meteo-iot-platform/node_modules/mysql-server-8-osx-x64/server/mysqld: Shutdown complete (mysqld 8.0.29)  MySQL Community Server - GPL.
