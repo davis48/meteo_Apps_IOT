@@ -478,7 +478,7 @@ async function updateNode(db, nodeId, fields) {
   return getNodeById(db, nodeId);
 }
 
-async function updateNodeStatuses(db, offlineAfterSec = 120) {
+async function updateNodeStatuses(db, offlineAfterSec = 3600) {
   const now = Math.floor(Date.now() / 1000);
   await db.query("UPDATE nodes SET status = CASE WHEN (? - last_seen) > ? THEN 'offline' ELSE 'online' END, updated_at = ?", [now, offlineAfterSec, now]);
 }

@@ -3,7 +3,13 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, Line, LineChart,
 
 // API CONFIG
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3002';
+const WS_URL =
+  import.meta.env.VITE_WS_URL ||
+  (() => {
+    const loc = window.location;
+    const proto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${loc.host}`;
+  })();
 
 // THEME
 const C = {
@@ -822,14 +828,17 @@ const NodesPage = ({ nodes, latestByNode }) => (
             <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 4 }}>Modifié le : {node.updated_at ? tsDate(node.updated_at) : '—'}</div>
             <div style={S.divider} />
             <div style={{ fontSize: 12, color: isOnline ? C.green : C.textMuted }}>{isOnline ? `Vu il y a ${Math.max(ago, 0)} min` : `Hors ligne depuis ${Math.floor(ago / 60)}h${ago % 60}m`}</div>
-            {isOnline && d && (
+            {d && (
               <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 6 }}>Dernières données reçues : {d.timestamp ? tsDate(d.timestamp) : '—'}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   {[
                     { label: 'Temp', value: `${fmt(d.temperature)}°C`, color: C.orange },
                     { label: 'Hum', value: `${fmt(d.humidity)}%`, color: C.accent },
                     { label: 'Press', value: `${fmt(d.pressure)} hPa`, color: C.purple },
                     { label: 'Vent', value: `${fmt(d.wind_speed)} m/s`, color: C.green },
+                    { label: 'Pluie', value: `${fmt(d.rain_level)} mm/h`, color: C.accent },
+                    { label: 'Lux', value: `${fmt(d.luminosity, '')} lux`, color: C.yellow },
                   ].map(({ label, value, color }) => (
                     <div key={label} style={{ background: C.surface, borderRadius: 8, padding: '6px 10px' }}>
                       <div style={{ fontSize: 10, color: C.textMuted }}>{label}</div>
