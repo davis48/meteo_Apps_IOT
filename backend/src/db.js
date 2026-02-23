@@ -1,65 +1,65 @@
-const crypto = require("crypto");
-const fs = require("fs");
-const net = require("net");
-const path = require("path");
-const { spawn, spawnSync } = require("child_process");
-const mysql = require("mysql2/promise");
-const { createDB: createEmbeddedMySQL } = require("mysql-memory-server");
-const { buildPredictionSet, generateSensorReading } = require("./generator");
+const crypto = require('crypto');
+const fs = require('fs');
+const net = require('net');
+const path = require('path');
+const { spawn, spawnSync } = require('child_process');
+const mysql = require('mysql2/promise');
+const { createDB: createEmbeddedMySQL } = require('mysql-memory-server');
+const { buildPredictionSet } = require('./generator');
 
-const BACKEND_ROOT = path.resolve(__dirname, "..");
+const BACKEND_ROOT = path.resolve(__dirname, '..');
 
 const DEFAULT_NODES = [
   {
-    id: "node-001",
-    name: "Station Alpha",
-    location: "Site Nord",
+    id: 'node-001',
+    name: 'Station Alpha',
+    location: 'Site Nord',
     latitude: 5.354,
     longitude: -4.004,
-    status: "online",
-    firmware_version: "v1.2.0",
+    status: 'online',
+    firmware_version: 'v1.2.0',
   },
   {
-    id: "node-002",
-    name: "Station Beta",
-    location: "Site Sud",
+    id: 'node-002',
+    name: 'Station Beta',
+    location: 'Site Sud',
     latitude: 5.28,
     longitude: -3.98,
-    status: "online",
-    firmware_version: "v1.1.5",
+    status: 'online',
+    firmware_version: 'v1.1.5',
   },
   {
-    id: "node-003",
-    name: "Station Gamma",
-    location: "Site Est",
+    id: 'node-003',
+    name: 'Station Gamma',
+    location: 'Site Est',
     latitude: 5.39,
     longitude: -3.95,
-    status: "offline",
-    firmware_version: "v1.0.8",
+    status: 'offline',
+    firmware_version: 'v1.0.8',
   },
 ];
 
 function parseIntervalToSeconds(interval) {
-  if (!interval || typeof interval !== "string") return null;
+  if (!interval || typeof interval !== 'string') return null;
   const match = interval.trim().match(/^(\d+)(m|h|d)$/i);
   if (!match) return null;
   const amount = Number(match[1]);
   const unit = match[2].toLowerCase();
   if (!Number.isFinite(amount) || amount <= 0) return null;
-  if (unit === "m") return amount * 60;
-  if (unit === "h") return amount * 3600;
+  if (unit === 'm') return amount * 60;
+  if (unit === 'h') return amount * 3600;
   return amount * 86400;
 }
 
 function parsePeriodToSeconds(period) {
   const map = {
-    "1h": 3600,
-    "6h": 6 * 3600,
-    "24h": 24 * 3600,
-    "7d": 7 * 86400,
-    "30d": 30 * 86400,
+    '1h': 3600,
+    '6h': 6 * 3600,
+    '24h': 24 * 3600,
+    '7d': 7 * 86400,
+    '30d': 30 * 86400,
   };
-  return map[period] || map["24h"];
+  return map[period] || map['24h'];
 }
 
 function clamp(value, min, max) {
@@ -89,15 +89,15 @@ async function canConnectTcp(host, port) {
   return new Promise((resolve) => {
     const socket = net.createConnection({ host, port });
     socket.setTimeout(900);
-    socket.on("connect", () => {
+    socket.on('connect', () => {
       socket.destroy();
       resolve(true);
     });
-    socket.on("timeout", () => {
+    socket.on('timeout', () => {
       socket.destroy();
       resolve(false);
     });
-    socket.on("error", () => resolve(false));
+    socket.on('error', () => resolve(false));
   });
 }
 
@@ -117,13 +117,13 @@ async function waitForMysqlPort({ host, port, timeoutMs = 45_000, childProcess =
 }
 
 function resolveLocalMysqlPackage() {
-  const packageNames = ["mysql-server-5.7-osx-x64", "mysql-server-8-osx-x64"];
+  const packageNames = ['mysql-server-5.7-osx-x64', 'mysql-server-8-osx-x64'];
   for (const packageName of packageNames) {
     try {
       const pkgJsonPath = require.resolve(`${packageName}/package.json`);
       const packageDir = path.dirname(pkgJsonPath);
-      const serverDir = path.join(packageDir, "server");
-      const mysqldPath = path.join(serverDir, "mysqld");
+      const serverDir = path.join(packageDir, 'server');
+      const mysqldPath = path.join(serverDir, 'mysqld');
       if (fs.existsSync(mysqldPath)) {
         return { packageName, packageDir, serverDir, mysqldPath };
       }
@@ -135,35 +135,28 @@ function resolveLocalMysqlPackage() {
 }
 
 function initializeLocalMysqlIfNeeded({ mysqldPath, serverDir, dataDir }) {
-  if (fs.existsSync(path.join(dataDir, "mysql"))) return;
+  if (fs.existsSync(path.join(dataDir, 'mysql'))) return;
 
   fs.mkdirSync(dataDir, { recursive: true });
-  const initArgs = [
-    "--initialize-insecure",
-    "--explicit_defaults_for_timestamp",
-    `--basedir=${serverDir}`,
-    `--datadir=${dataDir}`,
-  ];
+  const initArgs = ['--initialize-insecure', '--explicit_defaults_for_timestamp', `--basedir=${serverDir}`, `--datadir=${dataDir}`];
 
-  const initResult = spawnSync(mysqldPath, initArgs, { encoding: "utf8" });
+  const initResult = spawnSync(mysqldPath, initArgs, { encoding: 'utf8' });
   if (initResult.status !== 0) {
-    throw new Error(
-      `local mysqld initialization failed: ${initResult.stderr || initResult.stdout || "unknown error"}`
-    );
+    throw new Error(`local mysqld initialization failed: ${initResult.stderr || initResult.stdout || 'unknown error'}`);
   }
 }
 
 async function startLocalEmbeddedMysql(mysqlConfig) {
   const resolved = resolveLocalMysqlPackage();
   if (!resolved) {
-    throw new Error("no local mysql binary package found");
+    throw new Error('no local mysql binary package found');
   }
 
-  const runtimeRoot = path.join(BACKEND_ROOT, "data", "mysql-local-runtime");
-  const dataDir = path.join(runtimeRoot, "data");
-  const tmpDir = path.join(runtimeRoot, "tmp");
-  const pidFile = path.join(runtimeRoot, "mysql.pid");
-  const errorLogFile = path.join(runtimeRoot, "mysql.err");
+  const runtimeRoot = path.join(BACKEND_ROOT, 'data', 'mysql-local-runtime');
+  const dataDir = path.join(runtimeRoot, 'data');
+  const tmpDir = path.join(runtimeRoot, 'tmp');
+  const pidFile = path.join(runtimeRoot, 'mysql.pid');
+  const errorLogFile = path.join(runtimeRoot, 'mysql.err');
 
   fs.mkdirSync(runtimeRoot, { recursive: true });
   fs.mkdirSync(tmpDir, { recursive: true });
@@ -174,78 +167,73 @@ async function startLocalEmbeddedMysql(mysqlConfig) {
   });
 
   const runtimePort = Number(mysqlConfig.embeddedPort || mysqlConfig.port || 3307);
-  const dbName = mysqlConfig.embeddedDbName || mysqlConfig.database || "meteo_iot";
+  const dbName = mysqlConfig.embeddedDbName || mysqlConfig.database || 'meteo_iot';
 
   const args = [
-    "--explicit_defaults_for_timestamp",
+    '--explicit_defaults_for_timestamp',
     `--basedir=${resolved.serverDir}`,
     `--datadir=${dataDir}`,
     `--port=${runtimePort}`,
-    "--socket=",
+    '--socket=',
     `--pid-file=${pidFile}`,
-    "--bind-address=127.0.0.1",
+    '--bind-address=127.0.0.1',
     `--tmpdir=${tmpDir}`,
-    "--skip-networking=0",
+    '--skip-networking=0',
     `--log-error=${errorLogFile}`,
   ];
 
-  if (resolved.packageName.includes("8-osx-x64")) {
-    args.push("--mysqlx=OFF");
+  if (resolved.packageName.includes('8-osx-x64')) {
+    args.push('--mysqlx=OFF');
   }
 
   const mysqldProcess = spawn(resolved.mysqldPath, args, {
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-  let stderrTail = "";
-  mysqldProcess.stderr.on("data", (chunk) => {
+  let stderrTail = '';
+  mysqldProcess.stderr.on('data', (chunk) => {
     stderrTail = `${stderrTail}${chunk.toString()}`.slice(-4000);
   });
 
   await waitForMysqlPort({
-    host: "127.0.0.1",
+    host: '127.0.0.1',
     port: runtimePort,
     timeoutMs: 45_000,
     childProcess: mysqldProcess,
   });
 
   const bootstrapConnection = await mysql.createConnection({
-    host: "127.0.0.1",
+    host: '127.0.0.1',
     port: runtimePort,
-    user: "root",
-    password: "",
+    user: 'root',
+    password: '',
   });
-  await bootstrapConnection.query(
-    `CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
-  );
+  await bootstrapConnection.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
   await bootstrapConnection.end();
 
   return {
-    mode: "embedded-local",
-    host: "127.0.0.1",
+    mode: 'embedded-local',
+    host: '127.0.0.1',
     port: runtimePort,
-    user: "root",
-    password: "",
+    user: 'root',
+    password: '',
     database: dbName,
     stop: async () => {
       try {
         const shutdownConnection = await mysql.createConnection({
-          host: "127.0.0.1",
+          host: '127.0.0.1',
           port: runtimePort,
-          user: "root",
-          password: "",
+          user: 'root',
+          password: '',
         });
-        await shutdownConnection.query("SHUTDOWN");
+        await shutdownConnection.query('SHUTDOWN');
         await shutdownConnection.end();
       } catch (_error) {
         if (mysqldProcess.exitCode === null) {
-          mysqldProcess.kill("SIGTERM");
+          mysqldProcess.kill('SIGTERM');
         }
       }
-      await Promise.race([
-        new Promise((resolve) => mysqldProcess.once("exit", resolve)),
-        delay(3000),
-      ]);
+      await Promise.race([new Promise((resolve) => mysqldProcess.once('exit', resolve)), delay(3000)]);
     },
     diagnostic: stderrTail,
   };
@@ -254,21 +242,21 @@ async function startLocalEmbeddedMysql(mysqlConfig) {
 async function startMemoryEmbeddedMysql(mysqlConfig) {
   const embeddedServer = await createEmbeddedMySQL({
     version: mysqlConfig.embeddedVersion,
-    dbName: mysqlConfig.embeddedDbName || mysqlConfig.database || "meteo_iot",
-    username: mysqlConfig.user || "root",
-    logLevel: "ERROR",
-    xEnabled: "OFF",
+    dbName: mysqlConfig.embeddedDbName || mysqlConfig.database || 'meteo_iot',
+    username: mysqlConfig.user || 'root',
+    logLevel: 'ERROR',
+    xEnabled: 'OFF',
   });
 
   return {
-    mode: "embedded-memory",
-    host: "127.0.0.1",
+    mode: 'embedded-memory',
+    host: '127.0.0.1',
     port: embeddedServer.port,
     user: embeddedServer.username,
-    password: "",
+    password: '',
     database: embeddedServer.dbName,
     stop: () => embeddedServer.stop(),
-    diagnostic: "",
+    diagnostic: '',
   };
 }
 
@@ -282,9 +270,7 @@ async function createDatabase(mysqlConfig) {
       try {
         runtime = await startMemoryEmbeddedMysql(mysqlConfig);
       } catch (memoryError) {
-        throw new Error(
-          `unable to start embedded mysql (local: ${localError.message}; memory: ${memoryError.message})`
-        );
+        throw new Error(`unable to start embedded mysql (local: ${localError.message}; memory: ${memoryError.message})`);
       }
     }
   } else {
@@ -295,20 +281,18 @@ async function createDatabase(mysqlConfig) {
       password: mysqlConfig.password,
     });
 
-    await bootstrapConnection.query(
-      `CREATE DATABASE IF NOT EXISTS \`${mysqlConfig.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
-    );
+    await bootstrapConnection.query(`CREATE DATABASE IF NOT EXISTS \`${mysqlConfig.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
     await bootstrapConnection.end();
 
     runtime = {
-      mode: "external",
+      mode: 'external',
       host: mysqlConfig.host,
       port: mysqlConfig.port,
       user: mysqlConfig.user,
       password: mysqlConfig.password,
       database: mysqlConfig.database,
       stop: async () => {},
-      diagnostic: "",
+      diagnostic: '',
     };
   }
 
@@ -376,7 +360,7 @@ async function initSchema(db) {
       wind_speed DECIMAL(6,2) NOT NULL,
       anomaly_score DECIMAL(6,3) NOT NULL DEFAULT 0,
       is_anomaly TINYINT(1) NOT NULL DEFAULT 0,
-      source VARCHAR(32) NOT NULL DEFAULT 'simulator',
+      source VARCHAR(32) NOT NULL DEFAULT 'api',
       created_at BIGINT NOT NULL,
       updated_at BIGINT NOT NULL,
       CONSTRAINT fk_sensor_node FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
@@ -416,16 +400,16 @@ async function initSchema(db) {
   `);
 
   // Auto-migrate: add updated_at to existing tables (distant DB compatibility)
-  const tables = ["nodes", "sensor_data", "alerts", "predictions"];
+  const tables = ['nodes', 'sensor_data', 'alerts', 'predictions'];
   for (const table of tables) {
-    await ensureColumn(db, table, "updated_at", "BIGINT NOT NULL DEFAULT 0");
+    await ensureColumn(db, table, 'updated_at', 'BIGINT NOT NULL DEFAULT 0');
   }
 
-  await ensureIndex(db, "sensor_data", "idx_sensor_node_time", "CREATE INDEX idx_sensor_node_time ON sensor_data(node_id, timestamp DESC)");
-  await ensureIndex(db, "sensor_data", "idx_sensor_time", "CREATE INDEX idx_sensor_time ON sensor_data(timestamp DESC)");
-  await ensureIndex(db, "alerts", "idx_alerts_time", "CREATE INDEX idx_alerts_time ON alerts(timestamp DESC)");
-  await ensureIndex(db, "alerts", "idx_alerts_ack", "CREATE INDEX idx_alerts_ack ON alerts(acknowledged, timestamp DESC)");
-  await ensureIndex(db, "predictions", "idx_predictions_horizon_time", "CREATE INDEX idx_predictions_horizon_time ON predictions(horizon_hours, timestamp DESC)");
+  await ensureIndex(db, 'sensor_data', 'idx_sensor_node_time', 'CREATE INDEX idx_sensor_node_time ON sensor_data(node_id, timestamp DESC)');
+  await ensureIndex(db, 'sensor_data', 'idx_sensor_time', 'CREATE INDEX idx_sensor_time ON sensor_data(timestamp DESC)');
+  await ensureIndex(db, 'alerts', 'idx_alerts_time', 'CREATE INDEX idx_alerts_time ON alerts(timestamp DESC)');
+  await ensureIndex(db, 'alerts', 'idx_alerts_ack', 'CREATE INDEX idx_alerts_ack ON alerts(acknowledged, timestamp DESC)');
+  await ensureIndex(db, 'predictions', 'idx_predictions_horizon_time', 'CREATE INDEX idx_predictions_horizon_time ON predictions(horizon_hours, timestamp DESC)');
 }
 
 async function ensureIndex(db, tableName, indexName, createIndexSql) {
@@ -437,12 +421,10 @@ async function ensureIndex(db, tableName, indexName, createIndexSql) {
 
 async function seedDatabase(db) {
   await seedNodesIfNeeded(db);
-  await seedHistoryIfNeeded(db);
-  await refreshPredictions(db);
 }
 
 async function seedNodesIfNeeded(db) {
-  const [rows] = await db.query("SELECT COUNT(*) AS count FROM nodes");
+  const [rows] = await db.query('SELECT COUNT(*) AS count FROM nodes');
   if (rows[0].count > 0) return;
 
   const now = Math.floor(Date.now() / 1000);
@@ -452,65 +434,27 @@ async function seedNodesIfNeeded(db) {
       INSERT INTO nodes (id, name, location, latitude, longitude, status, firmware_version, last_seen, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
-      [
-        node.id,
-        node.name,
-        node.location,
-        node.latitude,
-        node.longitude,
-        node.status,
-        node.firmware_version,
-        node.status === "online" ? now : now - 3700,
-        now,
-        now,
-      ]
+      [node.id, node.name, node.location, node.latitude, node.longitude, node.status, node.firmware_version, node.status === 'online' ? now : now - 3700, now, now],
     );
   }
 }
 
-async function seedHistoryIfNeeded(db) {
-  const [rows] = await db.query("SELECT COUNT(*) AS count FROM sensor_data");
-  if (rows[0].count > 0) return;
-
-  const now = Math.floor(Date.now() / 1000);
-  const hours = 72;
-  const nodesToSeed = ["node-001", "node-002"];
-
-  for (const nodeId of nodesToSeed) {
-    let previous = null;
-    for (let i = hours; i > 0; i -= 1) {
-      const timestamp = now - i * 3600;
-      const reading = generateSensorReading(nodeId, timestamp, previous);
-      await insertSensorData(db, reading, "seed");
-      previous = reading;
-    }
-    await touchNode(db, nodeId, now);
-  }
-
-  const stale = generateSensorReading("node-003", now - 3900, null);
-  await insertSensorData(db, stale, "seed");
-}
-
 async function listNodes(db) {
-  const [rows] = await db.query("SELECT * FROM nodes ORDER BY name ASC");
+  const [rows] = await db.query('SELECT * FROM nodes ORDER BY name ASC');
   return rows.map(normalizeNode);
 }
 
 async function getNodeById(db, nodeId) {
-  const [rows] = await db.query("SELECT * FROM nodes WHERE id = ? LIMIT 1", [nodeId]);
+  const [rows] = await db.query('SELECT * FROM nodes WHERE id = ? LIMIT 1', [nodeId]);
   return rows[0] ? normalizeNode(rows[0]) : null;
 }
 
 async function touchNode(db, nodeId, timestampSec = Math.floor(Date.now() / 1000)) {
-  await db.query("UPDATE nodes SET last_seen = ?, status = 'online', updated_at = ? WHERE id = ?", [
-    timestampSec,
-    Math.floor(Date.now() / 1000),
-    nodeId,
-  ]);
+  await db.query("UPDATE nodes SET last_seen = ?, status = 'online', updated_at = ? WHERE id = ?", [timestampSec, Math.floor(Date.now() / 1000), nodeId]);
 }
 
 async function updateNode(db, nodeId, fields) {
-  const allowedFields = ["name", "location", "latitude", "longitude", "firmware_version", "status"];
+  const allowedFields = ['name', 'location', 'latitude', 'longitude', 'firmware_version', 'status'];
   const setClauses = [];
   const values = [];
 
@@ -524,14 +468,11 @@ async function updateNode(db, nodeId, fields) {
   if (setClauses.length === 0) return null;
 
   const now = Math.floor(Date.now() / 1000);
-  setClauses.push("updated_at = ?");
+  setClauses.push('updated_at = ?');
   values.push(now);
   values.push(nodeId);
 
-  const [result] = await db.query(
-    `UPDATE nodes SET ${setClauses.join(", ")} WHERE id = ?`,
-    values
-  );
+  const [result] = await db.query(`UPDATE nodes SET ${setClauses.join(', ')} WHERE id = ?`, values);
 
   if (!result.affectedRows) return null;
   return getNodeById(db, nodeId);
@@ -539,59 +480,85 @@ async function updateNode(db, nodeId, fields) {
 
 async function updateNodeStatuses(db, offlineAfterSec = 120) {
   const now = Math.floor(Date.now() / 1000);
-  await db.query(
-    "UPDATE nodes SET status = CASE WHEN (? - last_seen) > ? THEN 'offline' ELSE 'online' END, updated_at = ?",
-    [now, offlineAfterSec, now]
-  );
+  await db.query("UPDATE nodes SET status = CASE WHEN (? - last_seen) > ? THEN 'offline' ELSE 'online' END, updated_at = ?", [now, offlineAfterSec, now]);
 }
 
-async function insertSensorData(db, reading, source = "api") {
+async function insertSensorData(db, reading, source = 'api') {
   const now = Math.floor(Date.now() / 1000);
-  const row = {
-    id: reading.id || crypto.randomUUID(),
+  const timestamp = reading.timestamp || now;
+  const temperature = reading.temperature;
+  const humidity = reading.humidity;
+  const pressure = reading.pressure;
+  const luminosity = reading.luminosity;
+  const rain_level = reading.rain_level;
+  const wind_speed = reading.wind_speed;
+  const anomaly_score = reading.anomaly_score ?? 0;
+  const is_anomaly = reading.is_anomaly ? 1 : 0;
+
+  // Upsert: one row per node — update if exists, insert if not
+  const existing = await getLastSensorReadingForNode(db, reading.node_id);
+
+  if (existing) {
+    await db.query(
+      `UPDATE sensor_data
+       SET timestamp = ?, temperature = ?, humidity = ?, pressure = ?,
+           luminosity = ?, rain_level = ?, wind_speed = ?,
+           anomaly_score = ?, is_anomaly = ?, source = ?, updated_at = ?
+       WHERE id = ?`,
+      [timestamp, temperature, humidity, pressure, luminosity, rain_level, wind_speed, anomaly_score, is_anomaly, source, now, existing.id],
+    );
+    await touchNode(db, reading.node_id, timestamp);
+    return {
+      id: existing.id,
+      node_id: reading.node_id,
+      timestamp,
+      temperature,
+      humidity,
+      pressure,
+      luminosity,
+      rain_level,
+      wind_speed,
+      anomaly_score,
+      is_anomaly,
+      source,
+      created_at: existing.created_at,
+      updated_at: now,
+    };
+  }
+
+  const id = reading.id || crypto.randomUUID();
+  await db.query(
+    `INSERT INTO sensor_data (
+      id, node_id, timestamp, temperature, humidity, pressure, luminosity,
+      rain_level, wind_speed, anomaly_score, is_anomaly, source, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, reading.node_id, timestamp, temperature, humidity, pressure, luminosity, rain_level, wind_speed, anomaly_score, is_anomaly, source, now, now],
+  );
+
+  await touchNode(db, reading.node_id, timestamp);
+  return {
+    id,
     node_id: reading.node_id,
-    timestamp: reading.timestamp || now,
-    temperature: reading.temperature,
-    humidity: reading.humidity,
-    pressure: reading.pressure,
-    luminosity: reading.luminosity,
-    rain_level: reading.rain_level,
-    wind_speed: reading.wind_speed,
-    anomaly_score: reading.anomaly_score ?? 0,
-    is_anomaly: reading.is_anomaly ? 1 : 0,
+    timestamp,
+    temperature,
+    humidity,
+    pressure,
+    luminosity,
+    rain_level,
+    wind_speed,
+    anomaly_score,
+    is_anomaly,
     source,
     created_at: now,
     updated_at: now,
   };
+}
 
-  await db.query(
-    `
-    INSERT INTO sensor_data (
-      id, node_id, timestamp, temperature, humidity, pressure, luminosity,
-      rain_level, wind_speed, anomaly_score, is_anomaly, source, created_at, updated_at
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-    [
-      row.id,
-      row.node_id,
-      row.timestamp,
-      row.temperature,
-      row.humidity,
-      row.pressure,
-      row.luminosity,
-      row.rain_level,
-      row.wind_speed,
-      row.anomaly_score,
-      row.is_anomaly,
-      row.source,
-      row.created_at,
-      row.updated_at,
-    ]
-  );
-
-  await touchNode(db, row.node_id, row.timestamp);
-  return row;
+async function clearAllData(db) {
+  await db.query('DELETE FROM alerts');
+  await db.query('DELETE FROM predictions');
+  await db.query('DELETE FROM sensor_data');
 }
 
 async function getSensorDataById(db, id) {
@@ -599,37 +566,31 @@ async function getSensorDataById(db, id) {
     `SELECT id, node_id, timestamp, temperature, humidity, pressure, luminosity,
             rain_level, wind_speed, anomaly_score, is_anomaly, source, created_at, updated_at
      FROM sensor_data WHERE id = ? LIMIT 1`,
-    [id]
+    [id],
   );
   return rows[0] || null;
 }
 
 async function updateSensorData(db, id, fields) {
-  const allowedFields = [
-    "temperature", "humidity", "pressure", "luminosity",
-    "rain_level", "wind_speed", "anomaly_score", "is_anomaly",
-  ];
+  const allowedFields = ['temperature', 'humidity', 'pressure', 'luminosity', 'rain_level', 'wind_speed', 'anomaly_score', 'is_anomaly'];
   const setClauses = [];
   const values = [];
 
   for (const key of allowedFields) {
     if (fields[key] !== undefined) {
       setClauses.push(`\`${key}\` = ?`);
-      values.push(key === "is_anomaly" ? (fields[key] ? 1 : 0) : fields[key]);
+      values.push(key === 'is_anomaly' ? (fields[key] ? 1 : 0) : fields[key]);
     }
   }
 
   if (setClauses.length === 0) return null;
 
   const now = Math.floor(Date.now() / 1000);
-  setClauses.push("updated_at = ?");
+  setClauses.push('updated_at = ?');
   values.push(now);
   values.push(id);
 
-  const [result] = await db.query(
-    `UPDATE sensor_data SET ${setClauses.join(", ")} WHERE id = ?`,
-    values
-  );
+  const [result] = await db.query(`UPDATE sensor_data SET ${setClauses.join(', ')} WHERE id = ?`, values);
 
   if (!result.affectedRows) return null;
   return getSensorDataById(db, id);
@@ -646,7 +607,7 @@ async function getLastSensorReadingForNode(db, nodeId) {
       ORDER BY timestamp DESC
       LIMIT 1
     `,
-    [nodeId]
+    [nodeId],
   );
   return rows[0] || null;
 }
@@ -657,20 +618,20 @@ async function listSensorData(db, filters = {}) {
   const params = [];
 
   if (nodeId) {
-    whereParts.push("node_id = ?");
+    whereParts.push('node_id = ?');
     params.push(nodeId);
   }
   if (from) {
-    whereParts.push("timestamp >= ?");
+    whereParts.push('timestamp >= ?');
     params.push(Number(from));
   }
   if (to) {
-    whereParts.push("timestamp <= ?");
+    whereParts.push('timestamp <= ?');
     params.push(Number(to));
   }
 
   const maxLimit = Math.min(Number(limit) || 200, 1000);
-  const whereSql = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
+  const whereSql = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
   const bucketSec = parseIntervalToSeconds(interval);
 
   if (bucketSec) {
@@ -696,7 +657,7 @@ async function listSensorData(db, filters = {}) {
       ORDER BY timestamp DESC
       LIMIT ?
       `,
-      [...params, maxLimit]
+      [...params, maxLimit],
     );
     return rows;
   }
@@ -711,7 +672,7 @@ async function listSensorData(db, filters = {}) {
       ORDER BY timestamp DESC
       LIMIT ?
     `,
-    [...params, maxLimit]
+    [...params, maxLimit],
   );
   return rows;
 }
@@ -730,17 +691,17 @@ async function getLatestSensorDataByNode(db) {
   return rows;
 }
 
-async function getSensorStats(db, { node_id: nodeId, period = "24h" } = {}) {
+async function getSensorStats(db, { node_id: nodeId, period = '24h' } = {}) {
   const seconds = parsePeriodToSeconds(period);
   const fromTs = Math.floor(Date.now() / 1000) - seconds;
 
-  const whereParts = ["timestamp >= ?"];
+  const whereParts = ['timestamp >= ?'];
   const params = [fromTs];
   if (nodeId) {
-    whereParts.push("node_id = ?");
+    whereParts.push('node_id = ?');
     params.push(nodeId);
   }
-  const whereSql = `WHERE ${whereParts.join(" AND ")}`;
+  const whereSql = `WHERE ${whereParts.join(' AND ')}`;
 
   const [rows] = await db.query(
     `
@@ -763,7 +724,7 @@ async function getSensorStats(db, { node_id: nodeId, period = "24h" } = {}) {
     FROM sensor_data
     ${whereSql}
   `,
-    params
+    params,
   );
 
   return rows[0];
@@ -781,7 +742,7 @@ async function insertAlert(db, alertPayload) {
     ORDER BY timestamp DESC
     LIMIT 1
     `,
-    [alertPayload.node_id, alertPayload.type, timestamp - 20 * 60]
+    [alertPayload.node_id, alertPayload.type, timestamp - 20 * 60],
   );
 
   if (dupes[0]) return null;
@@ -803,17 +764,7 @@ async function insertAlert(db, alertPayload) {
     INSERT INTO alerts (id, node_id, timestamp, type, severity, message, acknowledged, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
-    [
-      row.id,
-      row.node_id,
-      row.timestamp,
-      row.type,
-      row.severity,
-      row.message,
-      row.acknowledged,
-      row.created_at,
-      row.updated_at,
-    ]
+    [row.id, row.node_id, row.timestamp, row.type, row.severity, row.message, row.acknowledged, row.created_at, row.updated_at],
   );
 
   return row;
@@ -825,19 +776,19 @@ async function listAlerts(db, filters = {}) {
   const params = [];
 
   if (severity) {
-    where.push("severity = ?");
+    where.push('severity = ?');
     params.push(severity);
   }
   if (acknowledged !== undefined) {
-    where.push("acknowledged = ?");
+    where.push('acknowledged = ?');
     params.push(Number(acknowledged) ? 1 : 0);
   }
   if (nodeId) {
-    where.push("node_id = ?");
+    where.push('node_id = ?');
     params.push(nodeId);
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const maxLimit = Math.min(Number(limit) || 200, 1000);
   const [rows] = await db.query(
     `
@@ -847,30 +798,27 @@ async function listAlerts(db, filters = {}) {
       ORDER BY timestamp DESC
       LIMIT ?
     `,
-    [...params, maxLimit]
+    [...params, maxLimit],
   );
   return rows;
 }
 
 async function acknowledgeAlert(db, alertId) {
   const now = Math.floor(Date.now() / 1000);
-  const [result] = await db.query("UPDATE alerts SET acknowledged = 1, updated_at = ? WHERE id = ?", [now, alertId]);
+  const [result] = await db.query('UPDATE alerts SET acknowledged = 1, updated_at = ? WHERE id = ?', [now, alertId]);
   if (!result.affectedRows) return null;
 
-  const [rows] = await db.query(
-    "SELECT id, node_id, timestamp, type, severity, message, acknowledged, created_at, updated_at FROM alerts WHERE id = ?",
-    [alertId]
-  );
+  const [rows] = await db.query('SELECT id, node_id, timestamp, type, severity, message, acknowledged, created_at, updated_at FROM alerts WHERE id = ?', [alertId]);
   return rows[0] || null;
 }
 
 async function listAnomalies(db, filters = {}) {
   const { node_id: nodeId, limit = 100 } = filters;
-  const where = ["(is_anomaly = 1 OR anomaly_score >= 0.7)"];
+  const where = ['(is_anomaly = 1 OR anomaly_score >= 0.7)'];
   const params = [];
 
   if (nodeId) {
-    where.push("node_id = ?");
+    where.push('node_id = ?');
     params.push(nodeId);
   }
 
@@ -881,22 +829,22 @@ async function listAnomalies(db, filters = {}) {
         id, node_id, timestamp, temperature, humidity, pressure, rain_level, wind_speed,
         anomaly_score, is_anomaly
       FROM sensor_data
-      WHERE ${where.join(" AND ")}
+      WHERE ${where.join(' AND ')}
       ORDER BY timestamp DESC
       LIMIT ?
     `,
-    [...params, maxLimit]
+    [...params, maxLimit],
   );
   return rows;
 }
 
 async function refreshPredictions(db) {
   const now = Math.floor(Date.now() / 1000);
-  const latestNodeReading = await getLastSensorReadingForNode(db, "node-001");
+  const latestNodeReading = await getLastSensorReadingForNode(db, 'node-001');
   const preds = buildPredictionSet(latestNodeReading);
 
   const cleanupBefore = now - 14 * 86400;
-  await db.query("DELETE FROM predictions WHERE timestamp < ?", [cleanupBefore]);
+  await db.query('DELETE FROM predictions WHERE timestamp < ?', [cleanupBefore]);
 
   for (const pred of preds) {
     await db.query(
@@ -907,20 +855,7 @@ async function refreshPredictions(db) {
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
-      [
-        crypto.randomUUID(),
-        "node-001",
-        now,
-        pred.horizon_hours,
-        pred.predicted_temp,
-        pred.predicted_humidity,
-        pred.predicted_pressure,
-        pred.extreme_event_probability,
-        pred.event_type,
-        "lstm-sim",
-        now,
-        now,
-      ]
+      [crypto.randomUUID(), 'node-001', now, pred.horizon_hours, pred.predicted_temp, pred.predicted_humidity, pred.predicted_pressure, pred.extreme_event_probability, pred.event_type, 'lstm-sim', now, now],
     );
   }
 
@@ -978,7 +913,7 @@ async function getDashboardSummary(db) {
     ) x
   `);
 
-  const [readingsRows] = await db.query("SELECT COUNT(*) AS total FROM sensor_data");
+  const [readingsRows] = await db.query('SELECT COUNT(*) AS total FROM sensor_data');
 
   const nodes = nodesRows[0] || {};
   const alerts = alertsRows[0] || {};
@@ -1017,7 +952,7 @@ async function getAIMetrics(db) {
       FROM sensor_data
       WHERE timestamp >= ?
     `,
-    [from24h]
+    [from24h],
   );
 
   const [predictionRows] = await db.query(
@@ -1034,7 +969,7 @@ async function getAIMetrics(db) {
           GROUP BY horizon_hours
         ) latest ON latest.horizon_hours = p.horizon_hours AND latest.latest_ts = p.timestamp
       ) x
-    `
+    `,
   );
 
   const stats = anomalyRows[0] || {};
@@ -1060,8 +995,8 @@ async function getAIMetrics(db) {
 
   return {
     embedded_model: {
-      name: "Autoencoder TinyML",
-      status: "active",
+      name: 'Autoencoder TinyML',
+      status: 'active',
       precision,
       recall,
       f1_score: f1,
@@ -1069,13 +1004,13 @@ async function getAIMetrics(db) {
       memory_footprint_kb: memoryKb,
     },
     cloud_model: {
-      name: "LSTM Forecast",
-      status: "active",
+      name: 'LSTM Forecast',
+      status: 'active',
       mae_temp: maeTemp,
       mae_pressure: maePressure,
       mae_humidity: maeHumidity,
       extreme_event_accuracy: extremeAccuracy,
-      retrain_policy: "weekly-auto",
+      retrain_policy: 'weekly-auto',
     },
     realtime: {
       anomaly_threshold: 70,
@@ -1101,6 +1036,7 @@ module.exports = {
   getSensorDataById,
   getSensorStats,
   insertAlert,
+  clearAllData,
   insertSensorData,
   listAlerts,
   listAnomalies,

@@ -1,11 +1,11 @@
-const express = require("express");
-const cors = require("cors");
-const http = require("http");
-const path = require("path");
-const fs = require("fs");
-const { WebSocketServer } = require("ws");
-const { z } = require("zod");
-const { config } = require("./config");
+const express = require('express');
+const cors = require('cors');
+const http = require('http');
+const path = require('path');
+const fs = require('fs');
+const { WebSocketServer } = require('ws');
+const { z } = require('zod');
+const { config } = require('./config');
 const {
   acknowledgeAlert,
   createDatabase,
@@ -18,6 +18,7 @@ const {
   getSensorDataById,
   getSensorStats,
   insertAlert,
+  clearAllData,
   insertSensorData,
   listAlerts,
   listAnomalies,
@@ -27,25 +28,20 @@ const {
   updateNode,
   updateNodeStatuses,
   updateSensorData,
-} = require("./db");
-const {
-  buildAlertsFromReading,
-  calculateAnomalyScore,
-  generateSensorReading,
-} = require("./generator");
-const aiEngine = require("./ai-engine");
+} = require('./db');
+const { buildAlertsFromReading, calculateAnomalyScore } = require('./generator');
+const aiEngine = require('./ai-engine');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 let db;
-let simulationTimer = null;
 
 app.use(cors());
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: '1mb' }));
 
 // ─── Servir le frontend buildé en production ────────────────────────────────
-const FRONTEND_DIST = path.resolve(__dirname, "../../frontend/dist");
+const FRONTEND_DIST = path.resolve(__dirname, '../../frontend/dist');
 if (fs.existsSync(FRONTEND_DIST)) {
   app.use(express.static(FRONTEND_DIST));
 }
@@ -58,8 +54,8 @@ function toUnix(value) {
 
 function parseAckQuery(value) {
   if (value === undefined) return undefined;
-  if (value === "1" || value === "true") return 1;
-  if (value === "0" || value === "false") return 0;
+  if (value === '1' || value === 'true') return 1;
+  if (value === '0' || value === 'false') return 0;
   return undefined;
 }
 
@@ -75,41 +71,43 @@ const wsClients = new Map(); // clientId => { ws, subscriptions: Set }
 
 const wsManager = {
   init(wss) {
-    wss.on("connection", (ws) => {
+    wss.on('connection', (ws) => {
       const clientId = Math.random().toString(36).slice(2);
-      wsClients.set(clientId, { ws, subscriptions: new Set(["*"]) });
+      wsClients.set(clientId, { ws, subscriptions: new Set(['*']) });
 
-      ws.send(JSON.stringify({
-        event: "connected",
-        data: { clientId, message: "MeteoIoT WebSocket — connecté", ts: new Date().toISOString() }
-      }));
+      ws.send(
+        JSON.stringify({
+          event: 'connected',
+          data: { clientId, message: 'MeteoIoT WebSocket — connecté', ts: new Date().toISOString() },
+        }),
+      );
 
-      ws.on("message", (raw) => {
+      ws.on('message', (raw) => {
         try {
           const msg = JSON.parse(raw);
           const client = wsClients.get(clientId);
-          if (msg.action === "subscribe" && client) {
+          if (msg.action === 'subscribe' && client) {
             msg.topics?.forEach((t) => client.subscriptions.add(t));
-            ws.send(JSON.stringify({ event: "subscribed", data: { topics: msg.topics } }));
+            ws.send(JSON.stringify({ event: 'subscribed', data: { topics: msg.topics } }));
           }
-          if (msg.action === "unsubscribe" && client) {
+          if (msg.action === 'unsubscribe' && client) {
             msg.topics?.forEach((t) => client.subscriptions.delete(t));
           }
-          if (msg.action === "ping") {
-            ws.send(JSON.stringify({ event: "pong", data: { ts: Date.now() } }));
+          if (msg.action === 'ping') {
+            ws.send(JSON.stringify({ event: 'pong', data: { ts: Date.now() } }));
           }
         } catch {}
       });
 
-      ws.on("close", () => wsClients.delete(clientId));
-      ws.on("error", () => wsClients.delete(clientId));
+      ws.on('close', () => wsClients.delete(clientId));
+      ws.on('error', () => wsClients.delete(clientId));
     });
 
     // Heartbeat toutes les 30 s
     setInterval(() => {
       for (const [id, { ws }] of wsClients) {
         if (ws.readyState === 1) {
-          ws.send(JSON.stringify({ event: "heartbeat", data: { ts: Date.now(), clients: wsClients.size } }));
+          ws.send(JSON.stringify({ event: 'heartbeat', data: { ts: Date.now(), clients: wsClients.size } }));
         } else {
           wsClients.delete(id);
         }
@@ -121,7 +119,7 @@ const wsManager = {
     const msg = JSON.stringify(payload);
     for (const { ws, subscriptions } of wsClients.values()) {
       if (ws.readyState === 1) {
-        if (!topic || subscriptions.has("*") || subscriptions.has(topic)) {
+        if (!topic || subscriptions.has('*') || subscriptions.has(topic)) {
           ws.send(msg);
         }
       }
@@ -159,30 +157,27 @@ const ingestPayloadSchema = z.object({
 async function materializeReading(payload) {
   const timestamp = payload.timestamp || Math.floor(Date.now() / 1000);
   const previous = await getLastSensorReadingForNode(db, payload.node_id);
-  const generated = generateSensorReading(payload.node_id, timestamp, previous);
 
   const merged = {
-    ...generated,
-    ...payload,
+    id: require('crypto').randomUUID(),
+    node_id: payload.node_id,
     timestamp,
+    temperature: payload.temperature || 0,
+    humidity: payload.humidity || 0,
+    pressure: payload.pressure || 0,
+    luminosity: payload.luminosity || 0,
+    rain_level: payload.rain_level || 0,
+    wind_speed: payload.wind_speed || 0,
   };
 
-  merged.anomaly_score =
-    payload.anomaly_score !== undefined
-      ? payload.anomaly_score
-      : calculateAnomalyScore(merged, previous);
+  merged.anomaly_score = payload.anomaly_score !== undefined ? payload.anomaly_score : calculateAnomalyScore(merged, previous);
 
-  merged.is_anomaly =
-    payload.is_anomaly !== undefined
-      ? Number(Boolean(payload.is_anomaly))
-      : merged.anomaly_score >= 0.7
-        ? 1
-        : 0;
+  merged.is_anomaly = payload.is_anomaly !== undefined ? Number(Boolean(payload.is_anomaly)) : merged.anomaly_score >= 0.7 ? 1 : 0;
 
   return { reading: merged, previous };
 }
 
-async function ingestReading(readingPayload, source = "api", shouldBroadcast = true) {
+async function ingestReading(readingPayload, source = 'api', shouldBroadcast = true) {
   const { reading, previous } = await materializeReading(readingPayload);
 
   // ── AI Engine: analyse approfondie ──────────────────────────────────────
@@ -213,21 +208,27 @@ async function ingestReading(readingPayload, source = "api", shouldBroadcast = t
   }
 
   if (shouldBroadcast) {
-    broadcast("sensor_data", insertedReading);
-    createdAlerts.forEach((alert) => broadcast("alert", alert));
+    broadcast('sensor_data', insertedReading);
+    createdAlerts.forEach((alert) => broadcast('alert', alert));
   }
 
   return { insertedReading, createdAlerts };
 }
 
-app.get("/api/health", async (_req, res) => {
+// ─── Clear all sensor_data, alerts, predictions ────────────────────────────
+app.delete('/api/data/clear', async (_req, res) => {
+  await clearAllData(db);
+  sendJson(res, 200, { message: 'All sensor_data, alerts, and predictions cleared' });
+});
+
+app.get('/api/health', async (_req, res) => {
   sendJson(res, 200, {
-    status: "ok",
+    status: 'ok',
     timestamp: new Date().toISOString(),
     version: config.appVersion,
     database: {
-      engine: "mysql",
-      mode: db?.runtime?.mode || "unknown",
+      engine: 'mysql',
+      mode: db?.runtime?.mode || 'unknown',
       host: db?.runtime?.host || config.mysql.host,
       port: db?.runtime?.port || config.mysql.port,
       name: db?.runtime?.database || config.mysql.database,
@@ -235,16 +236,16 @@ app.get("/api/health", async (_req, res) => {
   });
 });
 
-app.get("/api/nodes", async (_req, res) => {
+app.get('/api/nodes', async (_req, res) => {
   await updateNodeStatuses(db);
   sendJson(res, 200, { data: await listNodes(db) });
 });
 
-app.get("/api/nodes/:id", async (req, res) => {
+app.get('/api/nodes/:id', async (req, res) => {
   await updateNodeStatuses(db);
   const node = await getNodeById(db, req.params.id);
   if (!node) {
-    return sendJson(res, 404, { error: "Node not found" });
+    return sendJson(res, 404, { error: 'Node not found' });
   }
   const latest = await getLastSensorReadingForNode(db, node.id);
   return sendJson(res, 200, { data: { ...node, latest_data: latest || null } });
@@ -256,27 +257,27 @@ const updateNodeSchema = z.object({
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
   firmware_version: z.string().optional(),
-  status: z.enum(["online", "offline"]).optional(),
+  status: z.enum(['online', 'offline']).optional(),
 });
 
-app.patch("/api/nodes/:id", async (req, res) => {
+app.patch('/api/nodes/:id', async (req, res) => {
   const parsed = updateNodeSchema.safeParse(req.body);
   if (!parsed.success) {
-    return sendJson(res, 400, { error: "Invalid payload", details: parsed.error.issues });
+    return sendJson(res, 400, { error: 'Invalid payload', details: parsed.error.issues });
   }
   const existing = await getNodeById(db, req.params.id);
   if (!existing) {
-    return sendJson(res, 404, { error: "Node not found" });
+    return sendJson(res, 404, { error: 'Node not found' });
   }
   const updated = await updateNode(db, req.params.id, parsed.data);
   if (!updated) {
-    return sendJson(res, 400, { error: "No fields to update" });
+    return sendJson(res, 400, { error: 'No fields to update' });
   }
-  broadcast("node_updated", updated);
-  return sendJson(res, 200, { message: "Node updated", data: updated });
+  broadcast('node_updated', updated);
+  return sendJson(res, 200, { message: 'Node updated', data: updated });
 });
 
-app.get("/api/sensor-data", async (req, res) => {
+app.get('/api/sensor-data', async (req, res) => {
   const data = await listSensorData(db, {
     node_id: req.query.node_id,
     from: toUnix(req.query.from),
@@ -287,13 +288,13 @@ app.get("/api/sensor-data", async (req, res) => {
   sendJson(res, 200, { count: data.length, data });
 });
 
-app.get("/api/sensor-data/latest", async (_req, res) => {
+app.get('/api/sensor-data/latest', async (_req, res) => {
   const data = await getLatestSensorDataByNode(db);
   sendJson(res, 200, { data });
 });
 
-app.get("/api/sensor-data/stats", async (req, res) => {
-  const period = req.query.period || "24h";
+app.get('/api/sensor-data/stats', async (req, res) => {
+  const period = req.query.period || '24h';
   const data = await getSensorStats(db, {
     node_id: req.query.node_id,
     period,
@@ -301,13 +302,34 @@ app.get("/api/sensor-data/stats", async (req, res) => {
   sendJson(res, 200, { period, data });
 });
 
-app.post("/api/sensor-data", async (req, res) => {
+app.post('/api/sensor-data', async (req, res) => {
   const parsed = ingestPayloadSchema.safeParse(req.body);
   if (!parsed.success) {
-    return sendJson(res, 400, { error: "Invalid payload", details: parsed.error.issues });
+    return sendJson(res, 400, { error: 'Invalid payload', details: parsed.error.issues });
   }
 
-  const { insertedReading, createdAlerts } = await ingestReading(parsed.data, "api", true);
+  const { insertedReading, createdAlerts } = await ingestReading(parsed.data, 'api', true);
+  return sendJson(res, 201, {
+    data: insertedReading,
+    alerts_created: createdAlerts.length,
+  });
+});
+
+// POST /api/sensor-data/:node_id — ingest data with node_id from URL path
+app.post('/api/sensor-data/:node_id', async (req, res) => {
+  const payload = { ...req.body, node_id: req.params.node_id };
+  const parsed = ingestPayloadSchema.safeParse(payload);
+  if (!parsed.success) {
+    return sendJson(res, 400, { error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  const node = await getNodeById(db, req.params.node_id);
+  if (!node) {
+    return sendJson(res, 404, { error: `Unknown node '${req.params.node_id}'. Register it first via POST /api/sensors/register` });
+  }
+
+  const source = req.body.source || 'api';
+  const { insertedReading, createdAlerts } = await ingestReading(parsed.data, source, true);
   return sendJson(res, 201, {
     data: insertedReading,
     alerts_created: createdAlerts.length,
@@ -325,27 +347,34 @@ const updateSensorDataSchema = z.object({
   is_anomaly: z.union([z.number().int(), z.boolean()]).optional(),
 });
 
-app.patch("/api/sensor-data/:id", async (req, res) => {
+app.patch('/api/sensor-data/:id', async (req, res) => {
   const parsed = updateSensorDataSchema.safeParse(req.body);
   if (!parsed.success) {
-    return sendJson(res, 400, { error: "Invalid payload", details: parsed.error.issues });
+    return sendJson(res, 400, { error: 'Invalid payload', details: parsed.error.issues });
   }
-  const existing = await getSensorDataById(db, req.params.id);
+
+  // Support both sensor_data row ID and node ID (e.g. "node-001")
+  let existing = await getSensorDataById(db, req.params.id);
   if (!existing) {
-    return sendJson(res, 404, { error: "Sensor data not found" });
+    // Try as a node_id — update the latest reading for that node
+    existing = await getLastSensorReadingForNode(db, req.params.id);
   }
-  const updated = await updateSensorData(db, req.params.id, parsed.data);
+  if (!existing) {
+    return sendJson(res, 404, { error: 'Sensor data not found' });
+  }
+
+  const updated = await updateSensorData(db, existing.id, parsed.data);
   if (!updated) {
-    return sendJson(res, 400, { error: "No fields to update" });
+    return sendJson(res, 400, { error: 'No fields to update' });
   }
-  broadcast("sensor_data_updated", updated);
-  return sendJson(res, 200, { message: "Sensor data updated", data: updated });
+  broadcast('sensor_data_updated', updated);
+  return sendJson(res, 200, { message: 'Sensor data updated', data: updated });
 });
 
 // ─── Physical Sensor Endpoints ──────────────────────────────────────────────
 
 // Enregistrer un nouveau capteur physique
-app.post("/api/sensors/register", async (req, res) => {
+app.post('/api/sensors/register', async (req, res) => {
   const schema = z.object({
     node_id: z.string().min(1),
     name: z.string().min(1),
@@ -356,25 +385,25 @@ app.post("/api/sensors/register", async (req, res) => {
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
-    return sendJson(res, 400, { error: "Invalid payload", details: parsed.error.issues });
+    return sendJson(res, 400, { error: 'Invalid payload', details: parsed.error.issues });
   }
   const { node_id, name, location, latitude, longitude, firmware_version } = parsed.data;
   const now = Math.floor(Date.now() / 1000);
   try {
     const existing = await getNodeById(db, node_id);
     if (existing) {
-      return sendJson(res, 409, { error: "Node already exists", data: existing });
+      return sendJson(res, 409, { error: 'Node already exists', data: existing });
     }
     await db.query(
       `INSERT INTO nodes (id, name, location, latitude, longitude, status, firmware_version, last_seen, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, 'online', ?, ?, ?, ?)`,
-      [node_id, name, location || null, latitude || null, longitude || null, firmware_version || "physical-1.0", now, now, now]
+      [node_id, name, location || null, latitude || null, longitude || null, firmware_version || 'physical-1.0', now, now, now],
     );
     const node = await getNodeById(db, node_id);
-    broadcast("node_registered", node);
-    return sendJson(res, 201, { message: "Sensor registered", data: node });
+    broadcast('node_registered', node);
+    return sendJson(res, 201, { message: 'Sensor registered', data: node });
   } catch (err) {
-    return sendJson(res, 500, { error: "Registration failed", details: err.message });
+    return sendJson(res, 500, { error: 'Registration failed', details: err.message });
   }
 });
 
@@ -387,11 +416,11 @@ const physicalSensorSchema = z.object({
   pressure: z.number().min(800).max(1200),
 });
 
-app.post("/api/sensors/data", async (req, res) => {
+app.post('/api/sensors/data', async (req, res) => {
   const parsed = physicalSensorSchema.safeParse(req.body);
   if (!parsed.success) {
     console.warn(`[CAPTEUR] ⚠️  Payload invalide depuis ${req.ip} :`, parsed.error.issues);
-    return sendJson(res, 400, { error: "Invalid payload", details: parsed.error.issues });
+    return sendJson(res, 400, { error: 'Invalid payload', details: parsed.error.issues });
   }
   const { node_id, timestamp, temperature, humidity, pressure } = parsed.data;
   const node = await getNodeById(db, node_id);
@@ -399,38 +428,39 @@ app.post("/api/sensors/data", async (req, res) => {
     console.warn(`[CAPTEUR] ⚠️  Node inconnu '${node_id}' — enregistrement requis`);
     return sendJson(res, 404, { error: `Unknown node '${node_id}'. Register it first via POST /api/sensors/register` });
   }
-  const { insertedReading, createdAlerts } = await ingestReading(
-    { node_id, timestamp, temperature, humidity, pressure },
-    "physical",
-    true
-  );
-  const now = new Date().toLocaleString("fr-FR");
-  const anomaly = insertedReading.is_anomaly ? " 🚨 ANOMALIE DÉTECTÉE" : "";
+  const { insertedReading, createdAlerts } = await ingestReading({ node_id, timestamp, temperature, humidity, pressure }, 'physical', true);
+  const now = new Date().toLocaleString('fr-FR');
+  const anomaly = insertedReading.is_anomaly ? ' 🚨 ANOMALIE DÉTECTÉE' : '';
   console.log(
     `[CAPTEUR] ✅ ${now} | ${node_id} (${node.location || node.name})` +
-    `\n         🌡  Temp     : ${temperature} °C` +
-    `\n         💧 Humidité : ${humidity} %` +
-    `\n         🔵 Pression : ${pressure} hPa` +
-    `\n         📊 Anomaly  : ${insertedReading.anomaly_score} (score)${anomaly}` +
-    (createdAlerts.length ? `\n         🔔 Alertes  : ${createdAlerts.map(a => `${a.type} [${a.severity}]`).join(", ")}` : "")
+      `\n         🌡  Temp     : ${temperature} °C` +
+      `\n         💧 Humidité : ${humidity} %` +
+      `\n         🔵 Pression : ${pressure} hPa` +
+      `\n         📊 Anomaly  : ${insertedReading.anomaly_score} (score)${anomaly}` +
+      (createdAlerts.length ? `\n         🔔 Alertes  : ${createdAlerts.map((a) => `${a.type} [${a.severity}]`).join(', ')}` : ''),
   );
   return sendJson(res, 201, { data: insertedReading, alerts_created: createdAlerts.length });
 });
 
 // Envoi par lot (batch) — plusieurs lectures d'un coup
-app.post("/api/sensors/batch", async (req, res) => {
+app.post('/api/sensors/batch', async (req, res) => {
   const batchSchema = z.object({
     node_id: z.string().min(1),
-    readings: z.array(z.object({
-      timestamp: z.number().int().optional(),
-      temperature: z.number().min(-50).max(80),
-      humidity: z.number().min(0).max(100),
-      pressure: z.number().min(800).max(1200),
-    })).min(1).max(100),
+    readings: z
+      .array(
+        z.object({
+          timestamp: z.number().int().optional(),
+          temperature: z.number().min(-50).max(80),
+          humidity: z.number().min(0).max(100),
+          pressure: z.number().min(800).max(1200),
+        }),
+      )
+      .min(1)
+      .max(100),
   });
   const parsed = batchSchema.safeParse(req.body);
   if (!parsed.success) {
-    return sendJson(res, 400, { error: "Invalid payload", details: parsed.error.issues });
+    return sendJson(res, 400, { error: 'Invalid payload', details: parsed.error.issues });
   }
   const { node_id, readings } = parsed.data;
   const node = await getNodeById(db, node_id);
@@ -439,32 +469,28 @@ app.post("/api/sensors/batch", async (req, res) => {
   }
   const results = [];
   for (const r of readings) {
-    const { insertedReading } = await ingestReading(
-      { node_id, timestamp: r.timestamp, temperature: r.temperature, humidity: r.humidity, pressure: r.pressure },
-      "physical",
-      true
-    );
+    const { insertedReading } = await ingestReading({ node_id, timestamp: r.timestamp, temperature: r.temperature, humidity: r.humidity, pressure: r.pressure }, 'physical', true);
     results.push(insertedReading);
   }
   return sendJson(res, 201, { message: `${results.length} readings ingested`, count: results.length, data: results });
 });
 
 // Récupérer les dernières données d'un capteur
-app.get("/api/sensors/:nodeId/latest", async (req, res) => {
+app.get('/api/sensors/:nodeId/latest', async (req, res) => {
   const reading = await getLastSensorReadingForNode(db, req.params.nodeId);
   if (!reading) {
-    return sendJson(res, 404, { error: "No data for this node" });
+    return sendJson(res, 404, { error: 'No data for this node' });
   }
   sendJson(res, 200, { data: reading });
 });
 
 // Historique température/humidité/pression d'un capteur
-app.get("/api/sensors/:nodeId/history", async (req, res) => {
+app.get('/api/sensors/:nodeId/history', async (req, res) => {
   const data = await listSensorData(db, {
     node_id: req.params.nodeId,
     from: toUnix(req.query.from),
     to: toUnix(req.query.to),
-    limit: req.query.limit || "500",
+    limit: req.query.limit || '500',
   });
   const slim = data.map((r) => ({
     timestamp: r.timestamp,
@@ -479,7 +505,7 @@ app.get("/api/sensors/:nodeId/history", async (req, res) => {
 
 // ─── Alerts ────────────────────────────────────────────────────────────────
 
-app.get("/api/alerts", async (req, res) => {
+app.get('/api/alerts', async (req, res) => {
   const data = await listAlerts(db, {
     severity: req.query.severity,
     acknowledged: parseAckQuery(req.query.acknowledged),
@@ -489,16 +515,16 @@ app.get("/api/alerts", async (req, res) => {
   sendJson(res, 200, { count: data.length, data });
 });
 
-app.patch("/api/alerts/:id/acknowledge", async (req, res) => {
+app.patch('/api/alerts/:id/acknowledge', async (req, res) => {
   const alert = await acknowledgeAlert(db, req.params.id);
   if (!alert) {
-    return sendJson(res, 404, { error: "Alert not found" });
+    return sendJson(res, 404, { error: 'Alert not found' });
   }
-  broadcast("alert_acknowledged", alert);
-  return sendJson(res, 200, { message: "Alert acknowledged", data: alert });
+  broadcast('alert_acknowledged', alert);
+  return sendJson(res, 200, { message: 'Alert acknowledged', data: alert });
 });
 
-app.get("/api/anomalies", async (req, res) => {
+app.get('/api/anomalies', async (req, res) => {
   const data = await listAnomalies(db, {
     node_id: req.query.node_id,
     limit: req.query.limit,
@@ -506,54 +532,54 @@ app.get("/api/anomalies", async (req, res) => {
   sendJson(res, 200, { count: data.length, data });
 });
 
-app.get("/api/predictions", async (_req, res) => {
+app.get('/api/predictions', async (_req, res) => {
   const data = await getLatestPredictions(db);
   sendJson(res, 200, { data });
 });
 
-app.get("/api/dashboard/summary", async (_req, res) => {
+app.get('/api/dashboard/summary', async (_req, res) => {
   await updateNodeStatuses(db);
   const data = await getDashboardSummary(db);
   sendJson(res, 200, { data });
 });
 
-app.get("/api/ai/metrics", async (_req, res) => {
+app.get('/api/ai/metrics', async (_req, res) => {
   const data = await getAIMetrics(db);
   sendJson(res, 200, { data });
 });
 
 // ─── AI Engine API ──────────────────────────────────────────────────────────
 
-app.get("/api/ai/analyze/:nodeId", async (req, res) => {
+app.get('/api/ai/analyze/:nodeId', async (req, res) => {
   const reading = await getLastSensorReadingForNode(db, req.params.nodeId);
-  if (!reading) return sendJson(res, 404, { error: "No data for this node" });
+  if (!reading) return sendJson(res, 404, { error: 'No data for this node' });
   const win = aiEngine.getWindow(req.params.nodeId);
   const prev = win.length >= 2 ? win[win.length - 2] : null;
   const analysis = aiEngine.analyzeReading(req.params.nodeId, reading, prev);
   sendJson(res, 200, { data: { reading, analysis } });
 });
 
-app.get("/api/ai/predict/:nodeId", async (req, res) => {
+app.get('/api/ai/predict/:nodeId', async (req, res) => {
   const predictions = aiEngine.predictForNode(req.params.nodeId);
-  if (!predictions) return sendJson(res, 404, { error: "Not enough data for predictions (need at least 3 readings)" });
+  if (!predictions) return sendJson(res, 404, { error: 'Not enough data for predictions (need at least 3 readings)' });
   sendJson(res, 200, { data: predictions });
 });
 
-app.get("/api/ai/diagnose/:nodeId", async (req, res) => {
+app.get('/api/ai/diagnose/:nodeId', async (req, res) => {
   const diag = aiEngine.diagnoseNode(req.params.nodeId);
   sendJson(res, 200, { data: diag });
 });
 
 // ─── DB Admin Viewer ────────────────────────────────────────────────────────
 
-app.get("/db-admin/api/tables", async (_req, res) => {
-  const [rows] = await db.query("SHOW TABLES");
+app.get('/db-admin/api/tables', async (_req, res) => {
+  const [rows] = await db.query('SHOW TABLES');
   const tables = rows.map((r) => Object.values(r)[0]);
   res.json(tables);
 });
 
-app.get("/db-admin/api/tables/:table", async (req, res) => {
-  const table = req.params.table.replace(/[^a-zA-Z0-9_]/g, "");
+app.get('/db-admin/api/tables/:table', async (req, res) => {
+  const table = req.params.table.replace(/[^a-zA-Z0-9_]/g, '');
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
   const offset = (page - 1) * limit;
@@ -563,8 +589,8 @@ app.get("/db-admin/api/tables/:table", async (req, res) => {
   res.json({ columns: columns.map((c) => c.Field), rows, total, page, limit, pages: Math.ceil(total / limit) });
 });
 
-app.get("/db-admin", (_req, res) => {
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
+app.get('/db-admin', (_req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(`<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -753,11 +779,11 @@ loadTables();
 
 // ─── SPA Fallback (en production, toute route non-API sert index.html) ────
 if (fs.existsSync(FRONTEND_DIST)) {
-  app.get("/{*path}", (req, res, next) => {
-    if (req.path.startsWith("/api/") || req.path.startsWith("/db-admin")) {
+  app.get('/{*path}', (req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/db-admin')) {
       return next();
     }
-    res.sendFile(path.join(FRONTEND_DIST, "index.html"));
+    res.sendFile(path.join(FRONTEND_DIST, 'index.html'));
   });
 }
 
@@ -769,46 +795,18 @@ app.use((req, res) => {
 
 app.use((error, _req, res, _next) => {
   console.error(error);
-  sendJson(res, 500, { error: "Internal server error" });
+  sendJson(res, 500, { error: 'Internal server error' });
 });
 
 wsManager.init(wss);
 
-async function startSimulator() {
-  let tick = 0;
-  simulationTimer = setInterval(async () => {
-    try {
-      tick += 1;
-      await updateNodeStatuses(db);
-      const now = Math.floor(Date.now() / 1000);
-      const onlineNodes = (await listNodes(db)).filter((node) => node.status === "online");
-
-      for (const node of onlineNodes) {
-        const previous = await getLastSensorReadingForNode(db, node.id);
-        const reading = generateSensorReading(node.id, now, previous);
-        await ingestReading(reading, "simulator", true);
-      }
-
-      if (tick % 6 === 0) {
-        const preds = await refreshPredictions(db);
-        broadcast("predictions", preds);
-      }
-    } catch (error) {
-      console.error("Simulation loop error:", error.message);
-    }
-  }, config.simulationIntervalMs);
-}
-
 async function bootstrap() {
   db = await createDatabase(config.mysql);
-  await startSimulator();
 
   server.listen(config.port, config.host, () => {
     console.log(`Meteo backend running on http://${config.host}:${config.port}`);
     console.log(`MySQL mode: ${db.runtime.mode}`);
-    console.log(
-      `MySQL: ${db.runtime.user}@${db.runtime.host}:${db.runtime.port}/${db.runtime.database}`
-    );
+    console.log(`MySQL: ${db.runtime.user}@${db.runtime.host}:${db.runtime.port}/${db.runtime.database}`);
     if (fs.existsSync(FRONTEND_DIST)) {
       console.log(`Frontend: serving from ${FRONTEND_DIST}`);
     } else {
@@ -818,21 +816,18 @@ async function bootstrap() {
 }
 
 bootstrap().catch((error) => {
-  console.error("Failed to start backend:", error.message);
+  console.error('Failed to start backend:', error.message);
   process.exit(1);
 });
 
 async function shutdown() {
-  if (simulationTimer) {
-    clearInterval(simulationTimer);
-  }
   try {
     await db?.closeDatabase?.();
   } catch (error) {
-    console.error("Database shutdown error:", error.message);
+    console.error('Database shutdown error:', error.message);
   }
   process.exit(0);
 }
 
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
