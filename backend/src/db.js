@@ -495,37 +495,7 @@ async function insertSensorData(db, reading, source = 'api') {
   const anomaly_score = reading.anomaly_score ?? 0;
   const is_anomaly = reading.is_anomaly ? 1 : 0;
 
-  // Upsert: one row per node — update if exists, insert if not
-  const existing = await getLastSensorReadingForNode(db, reading.node_id);
-
-  if (existing) {
-    await db.query(
-      `UPDATE sensor_data
-       SET timestamp = ?, temperature = ?, humidity = ?, pressure = ?,
-           luminosity = ?, rain_level = ?, wind_speed = ?,
-           anomaly_score = ?, is_anomaly = ?, source = ?, updated_at = ?
-       WHERE id = ?`,
-      [timestamp, temperature, humidity, pressure, luminosity, rain_level, wind_speed, anomaly_score, is_anomaly, source, now, existing.id],
-    );
-    await touchNode(db, reading.node_id, timestamp);
-    return {
-      id: existing.id,
-      node_id: reading.node_id,
-      timestamp,
-      temperature,
-      humidity,
-      pressure,
-      luminosity,
-      rain_level,
-      wind_speed,
-      anomaly_score,
-      is_anomaly,
-      source,
-      created_at: existing.created_at,
-      updated_at: now,
-    };
-  }
-
+  // Always insert a new row to keep history
   const id = reading.id || crypto.randomUUID();
   await db.query(
     `INSERT INTO sensor_data (
