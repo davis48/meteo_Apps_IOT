@@ -706,7 +706,11 @@ const AlertsPage = ({ alerts, onAcknowledge }) => {
                   <span style={{ fontSize: 11, color: C.textMuted }}>{a.node_id}</span>
                 </div>
                 <div style={{ fontSize: 13, color: C.text, marginTop: 6 }}>{a.message}</div>
-                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>{tsDate(a.timestamp)}</div>
+                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>
+                  {tsDate(a.timestamp)}
+                  {a.created_at ? ` · Créé : ${tsDate(a.created_at)}` : ""}
+                  {a.updated_at && a.updated_at !== a.created_at ? ` · Modifié : ${tsDate(a.updated_at)}` : ""}
+                </div>
               </div>
               {!a.acknowledged && (
                 <button onClick={() => onAcknowledge(a.id)} style={S.btn(C.green)}>
@@ -879,7 +883,7 @@ const NodesPage = ({ nodes, latestByNode }) => (
   <div>
     <div style={S.header}>
       <h1 style={S.pageTitle}>Stations IoT</h1>
-      <span style={S.badge(C.accent)}>{nodes.length} nœuds configurés</span>
+      <span style={S.badge(C.accent)}>{nodes.length} noeuds configurés</span>
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
       {nodes.map((node) => {
@@ -898,6 +902,13 @@ const NodesPage = ({ nodes, latestByNode }) => (
             <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>Firmware : {node.firmware_version}</div>
             <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>
               Coords : {node.latitude.toFixed(3)}, {node.longitude.toFixed(3)}
+            </div>
+            <div style={S.divider} />
+            <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 4 }}>
+              Créé le : {node.created_at ? tsDate(node.created_at) : "—"}
+            </div>
+            <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 4 }}>
+              Modifié le : {node.updated_at ? tsDate(node.updated_at) : "—"}
             </div>
             <div style={S.divider} />
             <div style={{ fontSize: 12, color: isOnline ? C.green : C.textMuted }}>
@@ -929,135 +940,646 @@ const NodesPage = ({ nodes, latestByNode }) => (
 
 const APIPage = () => {
   const [copied, setCopied] = useState(null);
+  const [expanded, setExpanded] = useState({});
+  const toggle = (id) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
   const copy = (text, id) => {
     navigator.clipboard.writeText(text);
     setCopied(id);
     setTimeout(() => setCopied(null), 2000);
   };
 
+  const T = {
+    str: "string",
+    num: "number",
+    int: "integer",
+    bool: "boolean",
+    obj: "object",
+    arr: "array",
+    unix: "unix timestamp",
+    dec: "decimal",
+    enum: "enum",
+  };
+
   const endpoints = [
     {
       method: "GET",
       path: "/api/health",
-      desc: "Vérification de l'état du serveur",
-      response: `{ "success": true, "status": "ok", "timestamp": "...", "version": "1.0.0" }`,
+      desc: "Vérification de l'état du serveur et de la connexion base de données.",
+      params: [],
+      body: null,
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "status", type: T.str, desc: '"ok" si le serveur fonctionne' },
+        { field: "timestamp", type: T.str, desc: "Date ISO 8601 du serveur" },
+        { field: "version", type: T.str, desc: "Version de l'application" },
+        { field: "database.engine", type: T.str, desc: "Moteur de base de données (mysql)" },
+        { field: "database.mode", type: T.str, desc: "Mode : embedded-local | embedded-memory | external" },
+        { field: "database.host", type: T.str, desc: "Hôte de la base de données" },
+        { field: "database.port", type: T.int, desc: "Port de la base de données" },
+        { field: "database.name", type: T.str, desc: "Nom de la base de données" },
+      ],
+      example: `{ "success": true, "status": "ok", "timestamp": "2026-02-23T10:00:00.000Z", "version": "1.0.0", "database": { "engine": "mysql", "mode": "external", "host": "srv1579.hstgr.io", "port": 3306, "name": "meteo_iot" } }`,
     },
     {
       method: "GET",
       path: "/api/nodes",
-      desc: "Liste de tous les nœuds IoT",
-      response: `{ "success": true, "data": [{ "id": "node-001", "name": "Station Alpha", "status": "online" }] }`,
+      desc: "Retourne la liste de toutes les stations IoT enregistrées avec leur statut actuel.",
+      params: [],
+      body: null,
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "data[]", type: T.arr, desc: "Liste des stations", children: [
+          { field: "id", type: T.str, desc: "Identifiant unique de la station (ex: node-001)" },
+          { field: "name", type: T.str, desc: "Nom de la station (ex: Station Alpha)" },
+          { field: "location", type: T.str, desc: "Emplacement physique" },
+          { field: "latitude", type: T.dec, desc: "Latitude GPS (DECIMAL 10,6)" },
+          { field: "longitude", type: T.dec, desc: "Longitude GPS (DECIMAL 10,6)" },
+          { field: "status", type: T.enum, desc: '"online" | "offline"' },
+          { field: "firmware_version", type: T.str, desc: "Version du firmware embarqué" },
+          { field: "last_seen", type: T.unix, desc: "Dernier contact (secondes Unix)" },
+          { field: "created_at", type: T.unix, desc: "Date de création (secondes Unix)" },
+          { field: "updated_at", type: T.unix, desc: "Dernière modification (secondes Unix)" },
+        ]},
+      ],
+      example: `{ "success": true, "data": [{ "id": "node-001", "name": "Station Alpha", "location": "Site Nord", "latitude": 5.354, "longitude": -4.004, "status": "online", "firmware_version": "v1.2.0", "last_seen": 1740300000, "created_at": 1740200000, "updated_at": 1740300000 }] }`,
     },
     {
       method: "GET",
       path: "/api/nodes/:id",
-      desc: "Détails d'un nœud spécifique",
-      response: `{ "success": true, "data": { "id": "node-001", "name": "...", "latest_data": { ... } } }`,
+      desc: "Détails d'une station spécifique avec ses dernières données capteur.",
+      params: [
+        { name: ":id", in: "path", type: T.str, required: true, desc: "Identifiant de la station (ex: node-001)" },
+      ],
+      body: null,
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "data.id", type: T.str, desc: "Identifiant de la station" },
+        { field: "data.name", type: T.str, desc: "Nom de la station" },
+        { field: "data.location", type: T.str, desc: "Emplacement" },
+        { field: "data.status", type: T.enum, desc: '"online" | "offline"' },
+        { field: "data.created_at", type: T.unix, desc: "Date de création" },
+        { field: "data.updated_at", type: T.unix, desc: "Dernière modification" },
+        { field: "data.latest_data", type: T.obj, desc: "Dernière mesure capteur (ou null)" },
+      ],
+      example: `{ "success": true, "data": { "id": "node-001", "name": "Station Alpha", "status": "online", "created_at": 1740200000, "updated_at": 1740300000, "latest_data": { "temperature": 29.3, "humidity": 68.1 } } }`,
+    },
+    {
+      method: "PATCH",
+      path: "/api/nodes/:id",
+      desc: "Mettre à jour les informations d'une station IoT. Envoyer uniquement les champs à modifier.",
+      params: [
+        { name: ":id", in: "path", type: T.str, required: true, desc: "Identifiant de la station (ex: node-001)" },
+      ],
+      body: [
+        { field: "name", type: T.str, required: false, desc: "Nouveau nom de la station" },
+        { field: "location", type: T.str, required: false, desc: "Nouvel emplacement" },
+        { field: "latitude", type: T.num, required: false, desc: "Nouvelle latitude GPS (-90 à 90)" },
+        { field: "longitude", type: T.num, required: false, desc: "Nouvelle longitude GPS (-180 à 180)" },
+        { field: "firmware_version", type: T.str, required: false, desc: "Nouvelle version firmware" },
+        { field: "status", type: T.enum, required: false, desc: '"online" | "offline"' },
+      ],
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "message", type: T.str, desc: '"Node updated"' },
+        { field: "data", type: T.obj, desc: "Station mise à jour (schéma Node complet)", children: [
+          { field: "id", type: T.str, desc: "Identifiant (inchangé)" },
+          { field: "name", type: T.str, desc: "Nom (mis à jour si envoyé)" },
+          { field: "location", type: T.str, desc: "Emplacement (mis à jour si envoyé)" },
+          { field: "latitude", type: T.dec, desc: "Latitude GPS" },
+          { field: "longitude", type: T.dec, desc: "Longitude GPS" },
+          { field: "status", type: T.enum, desc: '"online" | "offline"' },
+          { field: "firmware_version", type: T.str, desc: "Version firmware" },
+          { field: "last_seen", type: T.unix, desc: "Dernier contact" },
+          { field: "created_at", type: T.unix, desc: "Date de création (inchangée)" },
+          { field: "updated_at", type: T.unix, desc: "Dernière modification (mis à jour automatiquement)" },
+        ]},
+      ],
+      example: `{ "success": true, "message": "Node updated", "data": { "id": "node-001", "name": "Station Alpha V2", "location": "Site Nord - Bâtiment B", "latitude": 5.354, "longitude": -4.004, "status": "online", "firmware_version": "v2.0.0", "last_seen": 1740300000, "created_at": 1740200000, "updated_at": 1740310000 } }`,
     },
     {
       method: "GET",
       path: "/api/sensor-data",
-      desc: "Données capteurs filtrées (node_id, from, to, limit, interval)",
-      response: `{ "success": true, "count": 100, "data": [{ "temperature": 29.3, "humidity": 68.1 }] }`,
+      desc: "Données des capteurs avec filtrage par station, période et agrégation temporelle.",
+      params: [
+        { name: "node_id", in: "query", type: T.str, required: false, desc: "Filtrer par station (ex: node-001)" },
+        { name: "from", in: "query", type: T.unix, required: false, desc: "Timestamp Unix début de période" },
+        { name: "to", in: "query", type: T.unix, required: false, desc: "Timestamp Unix fin de période" },
+        { name: "limit", in: "query", type: T.int, required: false, desc: "Nombre max de résultats (défaut: 200, max: 1000)" },
+        { name: "interval", in: "query", type: T.str, required: false, desc: 'Agrégation temporelle : "5m", "1h", "1d"' },
+      ],
+      body: null,
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "count", type: T.int, desc: "Nombre de résultats retournés" },
+        { field: "data[]", type: T.arr, desc: "Liste des mesures", children: [
+          { field: "id", type: T.str, desc: "Identifiant unique de la mesure" },
+          { field: "node_id", type: T.str, desc: "Station source" },
+          { field: "timestamp", type: T.unix, desc: "Horodatage de la mesure" },
+          { field: "temperature", type: T.dec, desc: "Température en °C" },
+          { field: "humidity", type: T.dec, desc: "Humidité relative en %" },
+          { field: "pressure", type: T.dec, desc: "Pression atmosphérique en hPa" },
+          { field: "luminosity", type: T.dec, desc: "Luminosité en lux" },
+          { field: "rain_level", type: T.dec, desc: "Niveau de pluie en mm/h" },
+          { field: "wind_speed", type: T.dec, desc: "Vitesse du vent en m/s" },
+          { field: "anomaly_score", type: T.dec, desc: "Score d'anomalie IA (0.0 – 1.0)" },
+          { field: "is_anomaly", type: T.bool, desc: "1 si anomalie détectée, 0 sinon" },
+          { field: "created_at", type: T.unix, desc: "Date d'insertion en base" },
+          { field: "updated_at", type: T.unix, desc: "Dernière modification" },
+        ]},
+      ],
+      example: `{ "success": true, "count": 2, "data": [{ "id": "abc-123", "node_id": "node-001", "timestamp": 1740300000, "temperature": 29.3, "humidity": 68.1, "pressure": 1012.5, "luminosity": 4500, "rain_level": 0.0, "wind_speed": 3.2, "anomaly_score": 0.12, "is_anomaly": 0, "created_at": 1740300000, "updated_at": 1740300000 }] }`,
     },
     {
       method: "GET",
       path: "/api/sensor-data/latest",
-      desc: "Dernière mesure de chaque station active",
-      response: `{ "success": true, "data": [{ "node_id": "node-001", "temperature": 30.1 }] }`,
+      desc: "Dernière mesure enregistrée pour chaque station active.",
+      params: [],
+      body: null,
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "data[]", type: T.arr, desc: "Dernière mesure par station (même schéma que sensor-data)" },
+      ],
+      example: `{ "success": true, "data": [{ "node_id": "node-001", "temperature": 30.1, "humidity": 65.3, "pressure": 1013.2, "created_at": 1740300000, "updated_at": 1740300000 }] }`,
     },
     {
       method: "GET",
       path: "/api/sensor-data/stats",
-      desc: "Statistiques agrégées (period: 1h|6h|24h|7d|30d)",
-      response: `{ "success": true, "period": "24h", "data": { "avg_temp": 28.4, "max_temp": 36.1 } }`,
+      desc: "Statistiques agrégées (moyennes, min, max) sur une période donnée.",
+      params: [
+        { name: "period", in: "query", type: T.str, required: false, desc: 'Période : "1h" | "6h" | "24h" | "7d" | "30d" (défaut: 24h)' },
+        { name: "node_id", in: "query", type: T.str, required: false, desc: "Filtrer par station" },
+      ],
+      body: null,
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "period", type: T.str, desc: "Période demandée" },
+        { field: "data.avg_temp", type: T.dec, desc: "Température moyenne" },
+        { field: "data.min_temp", type: T.dec, desc: "Température minimale" },
+        { field: "data.max_temp", type: T.dec, desc: "Température maximale" },
+        { field: "data.avg_humidity", type: T.dec, desc: "Humidité moyenne" },
+        { field: "data.avg_pressure", type: T.dec, desc: "Pression moyenne" },
+        { field: "data.avg_wind_speed", type: T.dec, desc: "Vitesse du vent moyenne" },
+        { field: "data.total_rain", type: T.dec, desc: "Précipitations cumulées" },
+        { field: "data.peak_anomaly_score", type: T.dec, desc: "Score anomalie max" },
+        { field: "data.anomaly_count", type: T.int, desc: "Nombre d'anomalies détectées" },
+        { field: "data.sample_count", type: T.int, desc: "Nombre total d'échantillons" },
+      ],
+      example: `{ "success": true, "period": "24h", "data": { "avg_temp": 28.4, "min_temp": 22.1, "max_temp": 36.1, "avg_humidity": 72.3, "avg_pressure": 1012.8, "avg_wind_speed": 4.1, "total_rain": 12.5, "peak_anomaly_score": 0.45, "anomaly_count": 2, "sample_count": 144 } }`,
     },
     {
       method: "POST",
       path: "/api/sensor-data",
-      desc: "Ingestion manuelle d'une mesure",
-      response: `{ "success": true, "data": { "id": "uuid", "timestamp": 1708000000 }, "alerts_created": 1 }`,
+      desc: "Ingestion manuelle d'une mesure capteur. Déclenche l'analyse IA et la génération d'alertes.",
+      params: [],
+      body: [
+        { field: "node_id", type: T.str, required: true, desc: "Identifiant de la station source" },
+        { field: "timestamp", type: T.int, required: false, desc: "Horodatage Unix (défaut: maintenant)" },
+        { field: "temperature", type: T.num, required: false, desc: "Température en °C" },
+        { field: "humidity", type: T.num, required: false, desc: "Humidité en %" },
+        { field: "pressure", type: T.num, required: false, desc: "Pression en hPa" },
+        { field: "luminosity", type: T.num, required: false, desc: "Luminosité en lux" },
+        { field: "rain_level", type: T.num, required: false, desc: "Pluie en mm/h" },
+        { field: "wind_speed", type: T.num, required: false, desc: "Vent en m/s" },
+        { field: "anomaly_score", type: T.num, required: false, desc: "Score anomalie (0–1, calculé auto si absent)" },
+        { field: "is_anomaly", type: T.bool, required: false, desc: "Forcer le flag anomalie" },
+      ],
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "data", type: T.obj, desc: "Mesure insérée avec analyse IA" },
+        { field: "data.ai_analysis.risk_level", type: T.str, desc: "Niveau de risque IA" },
+        { field: "data.ai_analysis.factors", type: T.arr, desc: "Facteurs de risque identifiés" },
+        { field: "data.ai_analysis.recommendations", type: T.arr, desc: "Recommandations IA" },
+        { field: "data.created_at", type: T.unix, desc: "Date de création" },
+        { field: "data.updated_at", type: T.unix, desc: "Dernière modification" },
+        { field: "alerts_created", type: T.int, desc: "Nombre d'alertes générées" },
+      ],
+      example: `{ "success": true, "data": { "id": "uuid", "node_id": "node-001", "timestamp": 1740300000, "temperature": 38.5, "anomaly_score": 0.82, "is_anomaly": 1, "created_at": 1740300000, "updated_at": 1740300000, "ai_analysis": { "risk_level": "high", "factors": ["temp_spike"], "recommendations": ["Vérifier capteur"] } }, "alerts_created": 1 }`,
+    },
+    {
+      method: "PATCH",
+      path: "/api/sensor-data/:id",
+      desc: "Mettre à jour une mesure capteur existante par son ID. Envoyer uniquement les champs à modifier. Met à jour automatiquement updated_at.",
+      params: [
+        { name: ":id", in: "path", type: T.str, required: true, desc: "Identifiant unique de la mesure (UUID)" },
+      ],
+      body: [
+        { field: "temperature", type: T.num, required: false, desc: "Température en °C (-50 à 80)" },
+        { field: "humidity", type: T.num, required: false, desc: "Humidité en % (0 à 100)" },
+        { field: "pressure", type: T.num, required: false, desc: "Pression en hPa (800 à 1200)" },
+        { field: "luminosity", type: T.num, required: false, desc: "Luminosité en lux (≥ 0)" },
+        { field: "rain_level", type: T.num, required: false, desc: "Niveau de pluie en mm/h (≥ 0)" },
+        { field: "wind_speed", type: T.num, required: false, desc: "Vitesse du vent en m/s (≥ 0)" },
+        { field: "anomaly_score", type: T.num, required: false, desc: "Score d'anomalie (0.0 – 1.0)" },
+        { field: "is_anomaly", type: T.bool, required: false, desc: "Flag anomalie (0 ou 1)" },
+      ],
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "message", type: T.str, desc: '"Sensor data updated"' },
+        { field: "data", type: T.obj, desc: "Mesure mise à jour", children: [
+          { field: "id", type: T.str, desc: "Identifiant unique (inchangé)" },
+          { field: "node_id", type: T.str, desc: "Station source (inchangée)" },
+          { field: "timestamp", type: T.unix, desc: "Horodatage original (inchangé)" },
+          { field: "temperature", type: T.dec, desc: "Température (mise à jour si envoyée)" },
+          { field: "humidity", type: T.dec, desc: "Humidité (mise à jour si envoyée)" },
+          { field: "pressure", type: T.dec, desc: "Pression (mise à jour si envoyée)" },
+          { field: "luminosity", type: T.dec, desc: "Luminosité (mise à jour si envoyée)" },
+          { field: "rain_level", type: T.dec, desc: "Pluie (mise à jour si envoyée)" },
+          { field: "wind_speed", type: T.dec, desc: "Vent (mis à jour si envoyé)" },
+          { field: "anomaly_score", type: T.dec, desc: "Score anomalie (mis à jour si envoyé)" },
+          { field: "is_anomaly", type: T.bool, desc: "Flag anomalie (mis à jour si envoyé)" },
+          { field: "source", type: T.str, desc: "Source originale (inchangée)" },
+          { field: "created_at", type: T.unix, desc: "Date de création (inchangée)" },
+          { field: "updated_at", type: T.unix, desc: "Dernière modification (mis à jour automatiquement)" },
+        ]},
+      ],
+      example: `{ "success": true, "message": "Sensor data updated", "data": { "id": "abc-123", "node_id": "node-001", "timestamp": 1740300000, "temperature": 31.5, "humidity": 72.0, "pressure": 1011.8, "luminosity": 4500, "rain_level": 0.0, "wind_speed": 3.2, "anomaly_score": 0.15, "is_anomaly": 0, "source": "physical", "created_at": 1740300000, "updated_at": 1740310000 } }`,
+    },
+    {
+      method: "POST",
+      path: "/api/sensors/register",
+      desc: "Enregistrer une nouvelle station/capteur physique dans le système.",
+      params: [],
+      body: [
+        { field: "node_id", type: T.str, required: true, desc: "Identifiant unique de la station" },
+        { field: "name", type: T.str, required: true, desc: "Nom de la station" },
+        { field: "location", type: T.str, required: false, desc: "Emplacement physique" },
+        { field: "latitude", type: T.num, required: false, desc: "Latitude GPS" },
+        { field: "longitude", type: T.num, required: false, desc: "Longitude GPS" },
+        { field: "firmware_version", type: T.str, required: false, desc: 'Version firmware (défaut: "physical-1.0")' },
+      ],
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "message", type: T.str, desc: "Message de confirmation" },
+        { field: "data", type: T.obj, desc: "Station créée (schéma Node complet)" },
+      ],
+      example: `{ "success": true, "message": "Sensor registered", "data": { "id": "esp32-01", "name": "Capteur Labo", "status": "online", "created_at": 1740300000, "updated_at": 1740300000 } }`,
+    },
+    {
+      method: "POST",
+      path: "/api/sensors/data",
+      desc: "Endpoint simplifié pour capteurs physiques (ESP32). Temp + Humidité + Pression.",
+      params: [],
+      body: [
+        { field: "node_id", type: T.str, required: true, desc: "Identifiant de la station (doit exister)" },
+        { field: "timestamp", type: T.int, required: false, desc: "Horodatage Unix (défaut: maintenant)" },
+        { field: "temperature", type: T.num, required: true, desc: "Température en °C (-50 à 80)" },
+        { field: "humidity", type: T.num, required: true, desc: "Humidité en % (0 à 100)" },
+        { field: "pressure", type: T.num, required: true, desc: "Pression en hPa (800 à 1200)" },
+      ],
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "data", type: T.obj, desc: "Mesure insérée (schéma sensor_data complet)" },
+        { field: "alerts_created", type: T.int, desc: "Nombre d'alertes générées" },
+      ],
+      example: `{ "success": true, "data": { "id": "uuid", "node_id": "esp32-01", "temperature": 31.2, "humidity": 74.5, "pressure": 1010.3, "anomaly_score": 0.15, "created_at": 1740300000, "updated_at": 1740300000 }, "alerts_created": 0 }`,
+    },
+    {
+      method: "POST",
+      path: "/api/sensors/batch",
+      desc: "Envoi par lot — plusieurs lectures d'un coup (max 100).",
+      params: [],
+      body: [
+        { field: "node_id", type: T.str, required: true, desc: "Identifiant de la station" },
+        { field: "readings[]", type: T.arr, required: true, desc: "Tableau de mesures (1–100)", children: [
+          { field: "timestamp", type: T.int, required: false, desc: "Horodatage Unix" },
+          { field: "temperature", type: T.num, required: true, desc: "Température en °C" },
+          { field: "humidity", type: T.num, required: true, desc: "Humidité en %" },
+          { field: "pressure", type: T.num, required: true, desc: "Pression en hPa" },
+        ]},
+      ],
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "message", type: T.str, desc: "Message de confirmation" },
+        { field: "count", type: T.int, desc: "Nombre de mesures insérées" },
+        { field: "data[]", type: T.arr, desc: "Liste des mesures insérées" },
+      ],
+      example: `{ "success": true, "message": "3 readings ingested", "count": 3, "data": [{ "id": "uuid", "temperature": 30.1, "created_at": 1740300000, "updated_at": 1740300000 }] }`,
     },
     {
       method: "GET",
       path: "/api/alerts",
-      desc: "Alertes filtrées (severity, acknowledged, node_id)",
-      response: `{ "success": true, "count": 3, "data": [{ "type": "RAIN", "severity": "critical" }] }`,
+      desc: "Liste des alertes avec filtrage par sévérité, statut et station.",
+      params: [
+        { name: "severity", in: "query", type: T.str, required: false, desc: '"info" | "warning" | "critical"' },
+        { name: "acknowledged", in: "query", type: T.str, required: false, desc: '"0" (actives) | "1" (acquittées)' },
+        { name: "node_id", in: "query", type: T.str, required: false, desc: "Filtrer par station" },
+        { name: "limit", in: "query", type: T.int, required: false, desc: "Nombre max (défaut: 200, max: 1000)" },
+      ],
+      body: null,
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "count", type: T.int, desc: "Nombre de résultats" },
+        { field: "data[]", type: T.arr, desc: "Liste des alertes", children: [
+          { field: "id", type: T.str, desc: "Identifiant unique de l'alerte" },
+          { field: "node_id", type: T.str, desc: "Station source" },
+          { field: "timestamp", type: T.unix, desc: "Horodatage de l'événement" },
+          { field: "type", type: T.str, desc: "Type d'alerte (TEMP, RAIN, WIND, ANOMALY...)" },
+          { field: "severity", type: T.enum, desc: '"info" | "warning" | "critical"' },
+          { field: "message", type: T.str, desc: "Message descriptif" },
+          { field: "acknowledged", type: T.bool, desc: "1 si acquittée, 0 sinon" },
+          { field: "created_at", type: T.unix, desc: "Date de création de l'alerte" },
+          { field: "updated_at", type: T.unix, desc: "Dernière modification (acquittement)" },
+        ]},
+      ],
+      example: `{ "success": true, "count": 3, "data": [{ "id": "uuid", "node_id": "node-001", "timestamp": 1740300000, "type": "TEMP_HIGH", "severity": "critical", "message": "Température élevée: 42.3°C", "acknowledged": 0, "created_at": 1740300000, "updated_at": 1740300000 }] }`,
     },
     {
       method: "PATCH",
       path: "/api/alerts/:id/acknowledge",
-      desc: "Acquitter une alerte",
-      response: `{ "success": true, "message": "Alert acknowledged" }`,
+      desc: "Acquitter une alerte active. Met à jour le champ acknowledged et updated_at.",
+      params: [
+        { name: ":id", in: "path", type: T.str, required: true, desc: "Identifiant de l'alerte" },
+      ],
+      body: null,
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "message", type: T.str, desc: '"Alert acknowledged"' },
+        { field: "data", type: T.obj, desc: "Alerte mise à jour avec updated_at modifié" },
+      ],
+      example: `{ "success": true, "message": "Alert acknowledged", "data": { "id": "uuid", "acknowledged": 1, "created_at": 1740300000, "updated_at": 1740310000 } }`,
     },
     {
       method: "GET",
       path: "/api/anomalies",
-      desc: "Mesures marquées comme anomalies IA",
-      response: `{ "success": true, "count": 5, "data": [{ "anomaly_score": 0.87 }] }`,
+      desc: "Mesures détectées comme anomalies par le modèle IA (score >= 0.7 ou is_anomaly = 1).",
+      params: [
+        { name: "node_id", in: "query", type: T.str, required: false, desc: "Filtrer par station" },
+        { name: "limit", in: "query", type: T.int, required: false, desc: "Nombre max (défaut: 100, max: 500)" },
+      ],
+      body: null,
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "count", type: T.int, desc: "Nombre d'anomalies" },
+        { field: "data[]", type: T.arr, desc: "Mesures anomaliques (schéma sensor_data partiel)" },
+      ],
+      example: `{ "success": true, "count": 5, "data": [{ "id": "uuid", "node_id": "node-001", "temperature": 41.2, "anomaly_score": 0.87, "is_anomaly": 1, "timestamp": 1740300000 }] }`,
     },
     {
       method: "GET",
       path: "/api/predictions",
-      desc: "Prévisions IA LSTM (3h, 6h, 12h, 24h)",
-      response: `{ "success": true, "data": [{ "horizon_hours": 6, "predicted_temp": 33.8 }] }`,
+      desc: "Dernières prévisions LSTM pour chaque horizon temporel (3h, 6h, 12h, 24h).",
+      params: [],
+      body: null,
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "data[]", type: T.arr, desc: "Prévisions par horizon", children: [
+          { field: "horizon_hours", type: T.int, desc: "Horizon de prévision (3, 6, 12, 24)" },
+          { field: "predicted_temp", type: T.dec, desc: "Température prédite en °C" },
+          { field: "predicted_humidity", type: T.dec, desc: "Humidité prédite en %" },
+          { field: "predicted_pressure", type: T.dec, desc: "Pression prédite en hPa" },
+          { field: "extreme_event_probability", type: T.dec, desc: "Probabilité d'événement extrême (0–1)" },
+          { field: "event_type", type: T.str, desc: "Type d'événement prédit (ou null)" },
+        ]},
+      ],
+      example: `{ "success": true, "data": [{ "horizon_hours": 6, "predicted_temp": 33.8, "predicted_humidity": 71.2, "predicted_pressure": 1010.5, "extreme_event_probability": 0.18, "event_type": null }] }`,
     },
     {
       method: "GET",
       path: "/api/ai/metrics",
-      desc: "Métriques dynamiques des modèles IA (TinyML + LSTM)",
-      response: `{ "success": true, "data": { "embedded_model": { "precision": 89.1 }, "cloud_model": { "mae_temp": 1.4 } } }`,
+      desc: "Métriques de performance des modèles IA embarqué (TinyML) et cloud (LSTM).",
+      params: [],
+      body: null,
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "data.embedded_model", type: T.obj, desc: "Modèle embarqué TinyML", children: [
+          { field: "name", type: T.str, desc: "Nom du modèle" },
+          { field: "status", type: T.str, desc: '"active" | "degraded"' },
+          { field: "precision", type: T.dec, desc: "Précision globale (%)" },
+          { field: "recall", type: T.dec, desc: "Rappel (%)" },
+          { field: "f1_score", type: T.dec, desc: "Score F1 (%)" },
+          { field: "inference_latency_ms", type: T.int, desc: "Latence d'inférence (ms)" },
+          { field: "memory_footprint_kb", type: T.int, desc: "Empreinte mémoire (Ko)" },
+        ]},
+        { field: "data.cloud_model", type: T.obj, desc: "Modèle cloud LSTM", children: [
+          { field: "name", type: T.str, desc: "Nom du modèle" },
+          { field: "status", type: T.str, desc: '"active" | "degraded"' },
+          { field: "mae_temp", type: T.dec, desc: "MAE température (°C)" },
+          { field: "mae_pressure", type: T.dec, desc: "MAE pression (hPa)" },
+          { field: "mae_humidity", type: T.dec, desc: "MAE humidité (%)" },
+          { field: "extreme_event_accuracy", type: T.dec, desc: "Précision alerte extrême (%)" },
+          { field: "retrain_policy", type: T.str, desc: "Politique de ré-entraînement" },
+        ]},
+        { field: "data.realtime", type: T.obj, desc: "Stats temps réel 24h", children: [
+          { field: "anomaly_threshold", type: T.int, desc: "Seuil d'alerte anomalie (%)" },
+          { field: "sample_count_24h", type: T.int, desc: "Nombre d'échantillons 24h" },
+          { field: "anomaly_count_24h", type: T.int, desc: "Anomalies détectées 24h" },
+          { field: "avg_anomaly_score_24h", type: T.dec, desc: "Score anomalie moyen" },
+          { field: "avg_risk_probability", type: T.dec, desc: "Probabilité de risque moyenne" },
+        ]},
+      ],
+      example: `{ "success": true, "data": { "embedded_model": { "name": "Autoencoder TinyML", "precision": 89.1, "recall": 91.3, "f1_score": 90.2 }, "cloud_model": { "mae_temp": 1.4, "mae_pressure": 4.2 }, "realtime": { "anomaly_threshold": 70, "sample_count_24h": 144 } } }`,
     },
     {
       method: "GET",
       path: "/api/dashboard/summary",
-      desc: "Résumé global pour le dashboard",
-      response: `{ "success": true, "data": { "nodes": { "total": 3, "online": 2 }, "alerts": { "active": 3 } } }`,
+      desc: "Résumé agrégé pour le tableau de bord principal.",
+      params: [],
+      body: null,
+      response: [
+        { field: "success", type: T.bool, desc: "Statut de la requête" },
+        { field: "data.nodes.total", type: T.int, desc: "Nombre total de stations" },
+        { field: "data.nodes.online", type: T.int, desc: "Stations en ligne" },
+        { field: "data.nodes.offline", type: T.int, desc: "Stations hors ligne" },
+        { field: "data.alerts.total", type: T.int, desc: "Nombre total d'alertes" },
+        { field: "data.alerts.active", type: T.int, desc: "Alertes non acquittées" },
+        { field: "data.alerts.critical_active", type: T.int, desc: "Alertes critiques actives" },
+        { field: "data.latest", type: T.obj, desc: "Moyennes des dernières mesures (avg_temperature, etc.)" },
+        { field: "data.readings.total", type: T.int, desc: "Nombre total de lectures en base" },
+      ],
+      example: `{ "success": true, "data": { "nodes": { "total": 3, "online": 2, "offline": 1 }, "alerts": { "total": 15, "active": 3, "critical_active": 1 }, "latest": { "avg_temperature": 29.1 }, "readings": { "total": 5420 } } }`,
     },
     {
       method: "WS",
-      path: "ws://localhost:3002",
-      desc: "WebSocket temps réel — événements: sensor_data, alert",
-      response: `{ "event": "sensor_data", "data": { "temperature": 29.1, "is_anomaly": 0 } }`,
+      path: `ws://host:port`,
+      desc: "WebSocket temps réel. Événements : sensor_data, alert, alert_acknowledged, predictions, heartbeat.",
+      params: [],
+      body: [
+        { field: "action", type: T.str, required: true, desc: '"subscribe" | "unsubscribe" | "ping"' },
+        { field: "topics[]", type: T.arr, required: false, desc: 'Canaux : "sensor_data", "alert", "*" (défaut: *)' },
+      ],
+      response: [
+        { field: "event", type: T.str, desc: "Type d'événement reçu" },
+        { field: "data", type: T.obj, desc: "Données de l'événement", children: [
+          { field: "(sensor_data)", type: T.obj, desc: "Mesure complète avec tous les champs capteur" },
+          { field: "(alert)", type: T.obj, desc: "Alerte avec type, severity, message, created_at, updated_at" },
+          { field: "(predictions)", type: T.arr, desc: "Nouvelles prévisions LSTM" },
+          { field: "(heartbeat)", type: T.obj, desc: "{ ts, clients } — toutes les 30s" },
+        ]},
+      ],
+      example: `{ "event": "sensor_data", "data": { "node_id": "node-001", "temperature": 29.1, "anomaly_score": 0.12, "is_anomaly": 0, "created_at": 1740300000, "updated_at": 1740300000 } }`,
     },
   ];
 
   const methodColor = { GET: C.green, POST: C.accent, PATCH: C.orange, DELETE: C.red, WS: C.purple };
 
+  const typeColor = (type) => {
+    if (type === T.str || type === T.enum) return C.yellow;
+    if (type === T.num || type === T.int || type === T.dec || type === T.unix) return C.green;
+    if (type === T.bool) return C.purple;
+    if (type === T.arr || type === T.obj) return C.accent;
+    return C.textMuted;
+  };
+
+  const FieldRow = ({ field, type, desc, required, indent = 0 }) => (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(160px, 1fr) 110px 2fr",
+        gap: 8,
+        padding: "5px 10px",
+        paddingLeft: 10 + indent * 16,
+        borderBottom: `1px solid ${C.border}20`,
+        fontSize: 12,
+        alignItems: "center",
+      }}
+    >
+      <code style={{ color: C.text, fontWeight: 500 }}>
+        {field}
+        {required && <span style={{ color: C.red, marginLeft: 4 }}>*</span>}
+      </code>
+      <span style={{ color: typeColor(type), fontSize: 11, fontWeight: 600 }}>{type}</span>
+      <span style={{ color: C.textMuted }}>{desc}</span>
+    </div>
+  );
+
+  const SchemaSection = ({ title, color, fields, isBody }) => (
+    <div style={{ marginTop: 10 }}>
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: "0.1em",
+          color,
+          textTransform: "uppercase",
+          marginBottom: 6,
+          padding: "0 10px",
+        }}
+      >
+        {title}
+      </div>
+      <div style={{ background: C.surface, borderRadius: 8, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(160px, 1fr) 110px 2fr",
+            gap: 8,
+            padding: "6px 10px",
+            borderBottom: `1px solid ${C.border}`,
+            fontSize: 10,
+            fontWeight: 700,
+            color: C.textMuted,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+          }}
+        >
+          <span>{isBody ? "CHAMP" : "CHAMP"}</span>
+          <span>TYPE</span>
+          <span>DESCRIPTION</span>
+        </div>
+        {fields.map((f, j) => (
+          <div key={j}>
+            <FieldRow field={f.field || f.name} type={f.type} desc={f.desc} required={f.required} indent={0} />
+            {f.children?.map((child, k) => (
+              <FieldRow key={k} field={child.field || child.name} type={child.type} desc={child.desc} required={child.required} indent={1} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div>
       <div style={S.header}>
         <h1 style={S.pageTitle}>Documentation API</h1>
-        <span style={S.badge(C.accent)}>REST + WebSocket</span>
+        <div style={S.row}>
+          <span style={S.badge(C.green)}>REST</span>
+          <span style={S.badge(C.purple)}>WebSocket</span>
+          <span style={S.badge(C.textMuted)}>{endpoints.length} endpoints</span>
+        </div>
       </div>
 
       <div style={S.card({ marginBottom: 16 })}>
         <div style={S.cardTitle}>Base URL</div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.surface, borderRadius: 8, padding: "10px 14px" }}>
-          <code style={{ color: C.green, fontSize: 14, flex: 1 }}>http://localhost:3002/api</code>
-          <button onClick={() => copy("http://localhost:3002/api", "base")} style={S.btn(C.accent)}>
+          <code style={{ color: C.green, fontSize: 14, flex: 1 }}>http://localhost:3600/api</code>
+          <button onClick={() => copy("http://localhost:3600/api", "base")} style={S.btn(C.accent)}>
             {copied === "base" ? "✓ Copié" : "Copier"}
           </button>
         </div>
       </div>
 
-      {endpoints.map((ep, i) => (
-        <div key={i} style={S.card({ marginBottom: 10 })}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-            <span style={{ ...S.tag(methodColor[ep.method] || C.textMuted), minWidth: 50, textAlign: "center" }}>{ep.method}</span>
-            <code style={{ fontSize: 13, color: C.text, flex: 1 }}>{ep.path}</code>
-            <button onClick={() => copy(ep.response, i)} style={S.btn(C.textMuted)}>
-              {copied === i ? "✓" : "{ }"}
-            </button>
+      {endpoints.map((ep, i) => {
+        const isOpen = expanded[i];
+        return (
+          <div key={i} style={S.card({ marginBottom: 8, padding: 0, overflow: "hidden" })}>
+            <div
+              onClick={() => toggle(i)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "12px 16px",
+                cursor: "pointer",
+                background: isOpen ? `${methodColor[ep.method]}08` : "transparent",
+                borderBottom: isOpen ? `1px solid ${C.border}` : "none",
+                transition: "background 0.15s",
+              }}
+            >
+              <span
+                style={{
+                  ...S.tag(methodColor[ep.method] || C.textMuted),
+                  minWidth: 54,
+                  textAlign: "center",
+                  fontWeight: 700,
+                  fontSize: 11,
+                }}
+              >
+                {ep.method}
+              </span>
+              <code style={{ fontSize: 13, color: C.text, flex: 1, fontWeight: 500 }}>{ep.path}</code>
+              <span style={{ fontSize: 12, color: C.textMuted, maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {ep.desc.split(".")[0]}
+              </span>
+              <span style={{ color: C.textMuted, fontSize: 14, transform: isOpen ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s" }}>
+                ▾
+              </span>
+            </div>
+
+            {isOpen && (
+              <div style={{ padding: "12px 16px" }}>
+                <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 12, lineHeight: 1.5 }}>{ep.desc}</div>
+
+                {ep.params.length > 0 && (
+                  <SchemaSection title="Paramètres" color={C.yellow} fields={ep.params} isBody={false} />
+                )}
+
+                {ep.body && (
+                  <SchemaSection title={ep.method === "WS" ? "Message (envoi)" : "Corps de la requête (Body)"} color={C.orange} fields={ep.body} isBody={true} />
+                )}
+
+                <SchemaSection title="Réponse" color={C.green} fields={ep.response} isBody={false} />
+
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: C.textDim, textTransform: "uppercase" }}>
+                      Exemple de réponse
+                    </span>
+                    <button onClick={(e) => { e.stopPropagation(); copy(ep.example, `ex-${i}`); }} style={{ ...S.btn(C.textMuted), padding: "3px 10px", fontSize: 11 }}>
+                      {copied === `ex-${i}` ? "✓ Copié" : "Copier"}
+                    </button>
+                  </div>
+                  <div style={{ background: C.surface, borderRadius: 8, padding: "10px 14px", border: `1px solid ${C.border}`, overflow: "auto", maxHeight: 180 }}>
+                    <pre style={{ fontSize: 11, color: C.green, margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all", lineHeight: 1.5 }}>
+                      {ep.example}
+                    </pre>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>{ep.desc}</div>
-          <div style={{ background: C.surface, borderRadius: 6, padding: "8px 12px" }}>
-            <code style={{ fontSize: 11, color: C.green, whiteSpace: "nowrap", overflow: "hidden", display: "block", textOverflow: "ellipsis" }}>
-              {ep.response}
-            </code>
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };

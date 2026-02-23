@@ -76,6 +76,8 @@ function normalizeNode(row) {
     status: row.status,
     firmware_version: row.firmware_version,
     last_seen: Number(row.last_seen),
+    created_at: Number(row.created_at),
+    updated_at: Number(row.updated_at || 0),
   };
 }
 
@@ -338,6 +340,13 @@ async function createDatabase(mysqlConfig) {
   return db;
 }
 
+async function ensureColumn(db, table, column, definition) {
+  const [cols] = await db.query(`SHOW COLUMNS FROM \`${table}\` LIKE ?`, [column]);
+  if (cols.length === 0) {
+    await db.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
+  }
+}
+
 async function initSchema(db) {
   await db.query(`
     CREATE TABLE IF NOT EXISTS nodes (
@@ -349,7 +358,8 @@ async function initSchema(db) {
       status ENUM('online','offline') NOT NULL DEFAULT 'offline',
       firmware_version VARCHAR(64),
       last_seen BIGINT NOT NULL,
-      created_at BIGINT NOT NULL
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL
     ) ENGINE=InnoDB;
   `);
 
@@ -368,6 +378,7 @@ async function initSchema(db) {
       is_anomaly TINYINT(1) NOT NULL DEFAULT 0,
       source VARCHAR(32) NOT NULL DEFAULT 'simulator',
       created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL,
       CONSTRAINT fk_sensor_node FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
     ) ENGINE=InnoDB;
   `);
@@ -382,6 +393,7 @@ async function initSchema(db) {
       message TEXT NOT NULL,
       acknowledged TINYINT(1) NOT NULL DEFAULT 0,
       created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL,
       CONSTRAINT fk_alert_node FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
     ) ENGINE=InnoDB;
   `);
@@ -398,9 +410,16 @@ async function initSchema(db) {
       extreme_event_probability DECIMAL(6,3) NOT NULL,
       event_type VARCHAR(64),
       source VARCHAR(32) NOT NULL DEFAULT 'lstm-sim',
-      created_at BIGINT NOT NULL
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL
     ) ENGINE=InnoDB;
   `);
+
+  // Auto-migrate: add updated_at to existing tables (distant DB compatibility)
+  const tables = ["nodes", "sensor_data", "alerts", "predictions"];
+  for (const table of tables) {
+    await ensureColumn(db, table, "updated_at", "BIGINT NOT NULL DEFAULT 0");
+  }
 
   await ensureIndex(db, "sensor_data", "idx_sensor_node_time", "CREATE INDEX idx_sensor_node_time ON sensor_data(node_id, timestamp DESC)");
   await ensureIndex(db, "sensor_data", "idx_sensor_time", "CREATE INDEX idx_sensor_time ON sensor_data(timestamp DESC)");
@@ -430,8 +449,8 @@ async function seedNodesIfNeeded(db) {
   for (const node of DEFAULT_NODES) {
     await db.query(
       `
-      INSERT INTO nodes (id, name, location, latitude, longitude, status, firmware_version, last_seen, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO nodes (id, name, location, latitude, longitude, status, firmware_version, last_seen, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         node.id,
@@ -442,6 +461,7 @@ async function seedNodesIfNeeded(db) {
         node.status,
         node.firmware_version,
         node.status === "online" ? now : now - 3700,
+        now,
         now,
       ]
     );
@@ -482,17 +502,46 @@ async function getNodeById(db, nodeId) {
 }
 
 async function touchNode(db, nodeId, timestampSec = Math.floor(Date.now() / 1000)) {
-  await db.query("UPDATE nodes SET last_seen = ?, status = 'online' WHERE id = ?", [
+  await db.query("UPDATE nodes SET last_seen = ?, status = 'online', updated_at = ? WHERE id = ?", [
     timestampSec,
+    Math.floor(Date.now() / 1000),
     nodeId,
   ]);
+}
+
+async function updateNode(db, nodeId, fields) {
+  const allowedFields = ["name", "location", "latitude", "longitude", "firmware_version", "status"];
+  const setClauses = [];
+  const values = [];
+
+  for (const key of allowedFields) {
+    if (fields[key] !== undefined) {
+      setClauses.push(`\`${key}\` = ?`);
+      values.push(fields[key]);
+    }
+  }
+
+  if (setClauses.length === 0) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  setClauses.push("updated_at = ?");
+  values.push(now);
+  values.push(nodeId);
+
+  const [result] = await db.query(
+    `UPDATE nodes SET ${setClauses.join(", ")} WHERE id = ?`,
+    values
+  );
+
+  if (!result.affectedRows) return null;
+  return getNodeById(db, nodeId);
 }
 
 async function updateNodeStatuses(db, offlineAfterSec = 120) {
   const now = Math.floor(Date.now() / 1000);
   await db.query(
-    "UPDATE nodes SET status = CASE WHEN (? - last_seen) > ? THEN 'offline' ELSE 'online' END",
-    [now, offlineAfterSec]
+    "UPDATE nodes SET status = CASE WHEN (? - last_seen) > ? THEN 'offline' ELSE 'online' END, updated_at = ?",
+    [now, offlineAfterSec, now]
   );
 }
 
@@ -512,15 +561,16 @@ async function insertSensorData(db, reading, source = "api") {
     is_anomaly: reading.is_anomaly ? 1 : 0,
     source,
     created_at: now,
+    updated_at: now,
   };
 
   await db.query(
     `
     INSERT INTO sensor_data (
       id, node_id, timestamp, temperature, humidity, pressure, luminosity,
-      rain_level, wind_speed, anomaly_score, is_anomaly, source, created_at
+      rain_level, wind_speed, anomaly_score, is_anomaly, source, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       row.id,
@@ -536,6 +586,7 @@ async function insertSensorData(db, reading, source = "api") {
       row.is_anomaly,
       row.source,
       row.created_at,
+      row.updated_at,
     ]
   );
 
@@ -543,12 +594,53 @@ async function insertSensorData(db, reading, source = "api") {
   return row;
 }
 
+async function getSensorDataById(db, id) {
+  const [rows] = await db.query(
+    `SELECT id, node_id, timestamp, temperature, humidity, pressure, luminosity,
+            rain_level, wind_speed, anomaly_score, is_anomaly, source, created_at, updated_at
+     FROM sensor_data WHERE id = ? LIMIT 1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+async function updateSensorData(db, id, fields) {
+  const allowedFields = [
+    "temperature", "humidity", "pressure", "luminosity",
+    "rain_level", "wind_speed", "anomaly_score", "is_anomaly",
+  ];
+  const setClauses = [];
+  const values = [];
+
+  for (const key of allowedFields) {
+    if (fields[key] !== undefined) {
+      setClauses.push(`\`${key}\` = ?`);
+      values.push(key === "is_anomaly" ? (fields[key] ? 1 : 0) : fields[key]);
+    }
+  }
+
+  if (setClauses.length === 0) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  setClauses.push("updated_at = ?");
+  values.push(now);
+  values.push(id);
+
+  const [result] = await db.query(
+    `UPDATE sensor_data SET ${setClauses.join(", ")} WHERE id = ?`,
+    values
+  );
+
+  if (!result.affectedRows) return null;
+  return getSensorDataById(db, id);
+}
+
 async function getLastSensorReadingForNode(db, nodeId) {
   const [rows] = await db.query(
     `
       SELECT
         id, node_id, timestamp, temperature, humidity, pressure, luminosity,
-        rain_level, wind_speed, anomaly_score, is_anomaly
+        rain_level, wind_speed, anomaly_score, is_anomaly, created_at, updated_at
       FROM sensor_data
       WHERE node_id = ?
       ORDER BY timestamp DESC
@@ -613,7 +705,7 @@ async function listSensorData(db, filters = {}) {
     `
       SELECT
         id, node_id, timestamp, temperature, humidity, pressure, luminosity,
-        rain_level, wind_speed, anomaly_score, is_anomaly
+        rain_level, wind_speed, anomaly_score, is_anomaly, created_at, updated_at
       FROM sensor_data
       ${whereSql}
       ORDER BY timestamp DESC
@@ -703,12 +795,13 @@ async function insertAlert(db, alertPayload) {
     message: alertPayload.message,
     acknowledged: 0,
     created_at: now,
+    updated_at: now,
   };
 
   await db.query(
     `
-    INSERT INTO alerts (id, node_id, timestamp, type, severity, message, acknowledged, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO alerts (id, node_id, timestamp, type, severity, message, acknowledged, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       row.id,
@@ -719,6 +812,7 @@ async function insertAlert(db, alertPayload) {
       row.message,
       row.acknowledged,
       row.created_at,
+      row.updated_at,
     ]
   );
 
@@ -747,7 +841,7 @@ async function listAlerts(db, filters = {}) {
   const maxLimit = Math.min(Number(limit) || 200, 1000);
   const [rows] = await db.query(
     `
-      SELECT id, node_id, timestamp, type, severity, message, acknowledged
+      SELECT id, node_id, timestamp, type, severity, message, acknowledged, created_at, updated_at
       FROM alerts
       ${whereSql}
       ORDER BY timestamp DESC
@@ -759,11 +853,12 @@ async function listAlerts(db, filters = {}) {
 }
 
 async function acknowledgeAlert(db, alertId) {
-  const [result] = await db.query("UPDATE alerts SET acknowledged = 1 WHERE id = ?", [alertId]);
+  const now = Math.floor(Date.now() / 1000);
+  const [result] = await db.query("UPDATE alerts SET acknowledged = 1, updated_at = ? WHERE id = ?", [now, alertId]);
   if (!result.affectedRows) return null;
 
   const [rows] = await db.query(
-    "SELECT id, node_id, timestamp, type, severity, message, acknowledged FROM alerts WHERE id = ?",
+    "SELECT id, node_id, timestamp, type, severity, message, acknowledged, created_at, updated_at FROM alerts WHERE id = ?",
     [alertId]
   );
   return rows[0] || null;
@@ -808,9 +903,9 @@ async function refreshPredictions(db) {
       `
       INSERT INTO predictions (
         id, node_id, timestamp, horizon_hours, predicted_temp, predicted_humidity,
-        predicted_pressure, extreme_event_probability, event_type, source, created_at
+        predicted_pressure, extreme_event_probability, event_type, source, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         crypto.randomUUID(),
@@ -823,6 +918,7 @@ async function refreshPredictions(db) {
         pred.extreme_event_probability,
         pred.event_type,
         "lstm-sim",
+        now,
         now,
       ]
     );
@@ -1002,6 +1098,7 @@ module.exports = {
   getLatestPredictions,
   getLatestSensorDataByNode,
   getNodeById,
+  getSensorDataById,
   getSensorStats,
   insertAlert,
   insertSensorData,
@@ -1011,5 +1108,7 @@ module.exports = {
   listSensorData,
   refreshPredictions,
   touchNode,
+  updateNode,
   updateNodeStatuses,
+  updateSensorData,
 };

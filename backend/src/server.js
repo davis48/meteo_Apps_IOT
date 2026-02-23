@@ -15,6 +15,7 @@ const {
   getLatestPredictions,
   getLatestSensorDataByNode,
   getNodeById,
+  getSensorDataById,
   getSensorStats,
   insertAlert,
   insertSensorData,
@@ -23,7 +24,9 @@ const {
   listNodes,
   listSensorData,
   refreshPredictions,
+  updateNode,
   updateNodeStatuses,
+  updateSensorData,
 } = require("./db");
 const {
   buildAlertsFromReading,
@@ -247,6 +250,32 @@ app.get("/api/nodes/:id", async (req, res) => {
   return sendJson(res, 200, { data: { ...node, latest_data: latest || null } });
 });
 
+const updateNodeSchema = z.object({
+  name: z.string().min(1).optional(),
+  location: z.string().optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  firmware_version: z.string().optional(),
+  status: z.enum(["online", "offline"]).optional(),
+});
+
+app.patch("/api/nodes/:id", async (req, res) => {
+  const parsed = updateNodeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return sendJson(res, 400, { error: "Invalid payload", details: parsed.error.issues });
+  }
+  const existing = await getNodeById(db, req.params.id);
+  if (!existing) {
+    return sendJson(res, 404, { error: "Node not found" });
+  }
+  const updated = await updateNode(db, req.params.id, parsed.data);
+  if (!updated) {
+    return sendJson(res, 400, { error: "No fields to update" });
+  }
+  broadcast("node_updated", updated);
+  return sendJson(res, 200, { message: "Node updated", data: updated });
+});
+
 app.get("/api/sensor-data", async (req, res) => {
   const data = await listSensorData(db, {
     node_id: req.query.node_id,
@@ -285,6 +314,34 @@ app.post("/api/sensor-data", async (req, res) => {
   });
 });
 
+const updateSensorDataSchema = z.object({
+  temperature: z.number().min(-50).max(80).optional(),
+  humidity: z.number().min(0).max(100).optional(),
+  pressure: z.number().min(800).max(1200).optional(),
+  luminosity: z.number().min(0).optional(),
+  rain_level: z.number().min(0).optional(),
+  wind_speed: z.number().min(0).optional(),
+  anomaly_score: z.number().min(0).max(1).optional(),
+  is_anomaly: z.union([z.number().int(), z.boolean()]).optional(),
+});
+
+app.patch("/api/sensor-data/:id", async (req, res) => {
+  const parsed = updateSensorDataSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return sendJson(res, 400, { error: "Invalid payload", details: parsed.error.issues });
+  }
+  const existing = await getSensorDataById(db, req.params.id);
+  if (!existing) {
+    return sendJson(res, 404, { error: "Sensor data not found" });
+  }
+  const updated = await updateSensorData(db, req.params.id, parsed.data);
+  if (!updated) {
+    return sendJson(res, 400, { error: "No fields to update" });
+  }
+  broadcast("sensor_data_updated", updated);
+  return sendJson(res, 200, { message: "Sensor data updated", data: updated });
+});
+
 // ─── Physical Sensor Endpoints ──────────────────────────────────────────────
 
 // Enregistrer un nouveau capteur physique
@@ -309,9 +366,9 @@ app.post("/api/sensors/register", async (req, res) => {
       return sendJson(res, 409, { error: "Node already exists", data: existing });
     }
     await db.query(
-      `INSERT INTO nodes (id, name, location, latitude, longitude, status, firmware_version, last_seen, created_at)
-       VALUES (?, ?, ?, ?, ?, 'online', ?, ?, ?)`,
-      [node_id, name, location || null, latitude || null, longitude || null, firmware_version || "physical-1.0", now, now]
+      `INSERT INTO nodes (id, name, location, latitude, longitude, status, firmware_version, last_seen, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'online', ?, ?, ?, ?)`,
+      [node_id, name, location || null, latitude || null, longitude || null, firmware_version || "physical-1.0", now, now, now]
     );
     const node = await getNodeById(db, node_id);
     broadcast("node_registered", node);
@@ -680,7 +737,7 @@ function fmt(col, val) {
   if (col === 'severity') return \`<span class="tag tag-\${s}">\${s}</span>\`;
   if (col === 'source') return \`<span class="tag tag-\${s}">\${s}</span>\`;
   if (col === 'acknowledged' || col === 'is_anomaly') return val == 1 ? '<span class="bool-1">✓ oui</span>' : '<span class="bool-0">✗ non</span>';
-  if (col === 'timestamp' || col === 'created_at' || col === 'last_seen') {
+  if (col === 'timestamp' || col === 'created_at' || col === 'updated_at' || col === 'last_seen') {
     const d = new Date(Number(s) * 1000);
     return isNaN(d) ? s : '<span class="num" title="' + s + '">' + d.toLocaleString('fr-FR') + '</span>';
   }
