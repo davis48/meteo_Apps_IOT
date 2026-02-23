@@ -308,7 +308,13 @@ app.post('/api/sensor-data', async (req, res) => {
     return sendJson(res, 400, { error: 'Invalid payload', details: parsed.error.issues });
   }
 
-  const { insertedReading, createdAlerts } = await ingestReading(parsed.data, 'api', true);
+  const node = await getNodeById(db, parsed.data.node_id);
+  if (!node) {
+    return sendJson(res, 404, { error: `Unknown node '${parsed.data.node_id}'. Register it first via POST /api/sensors/register` });
+  }
+
+  const source = req.body.source || 'api';
+  const { insertedReading, createdAlerts } = await ingestReading(parsed.data, source, true);
   return sendJson(res, 201, {
     data: insertedReading,
     alerts_created: createdAlerts.length,
