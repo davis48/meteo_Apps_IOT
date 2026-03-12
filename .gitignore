@@ -13,3 +13,4 @@ backend/data/mysql
 *.pid
 *.err
 *.log
+backend/src/tmpclaude-*

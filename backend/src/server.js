@@ -6,9 +6,12 @@ const fs = require('fs');
 const { WebSocketServer } = require('ws');
 const { z } = require('zod');
 const { config } = require('./config');
+const mqttService = require('./services/mqttService');
 const {
   acknowledgeAlert,
   createDatabase,
+  deleteAlert,
+  deleteNode,
   getAIMetrics,
   getDashboardSummary,
   getLastSensorReadingForNode,
@@ -29,7 +32,7 @@ const {
   updateNodeStatuses,
   updateSensorData,
 } = require('./db');
-const { buildAlertsFromReading, calculateAnomalyScore } = require('./generator');
+const { buildAlertsFromReading, calculateAnomalyScore, generateSensorReading } = require('./generator');
 const aiEngine = require('./ai-engine');
 
 const app = express();
@@ -275,6 +278,15 @@ app.patch('/api/nodes/:id', async (req, res) => {
   }
   broadcast('node_updated', updated);
   return sendJson(res, 200, { message: 'Node updated', data: updated });
+});
+
+app.delete('/api/nodes/:id', async (req, res) => {
+  const node = await getNodeById(db, req.params.id);
+  if (!node) return sendJson(res, 404, { error: 'Node not found' });
+  const deleted = await deleteNode(db, req.params.id);
+  if (!deleted) return sendJson(res, 500, { error: 'Delete failed' });
+  broadcast('node_deleted', { id: req.params.id });
+  return sendJson(res, 200, { message: 'Node deleted', id: req.params.id });
 });
 
 app.get('/api/sensor-data', async (req, res) => {
@@ -528,6 +540,15 @@ app.patch('/api/alerts/:id/acknowledge', async (req, res) => {
   }
   broadcast('alert_acknowledged', alert);
   return sendJson(res, 200, { message: 'Alert acknowledged', data: alert });
+});
+
+app.delete('/api/alerts/:id', async (req, res) => {
+  const deleted = await deleteAlert(db, req.params.id);
+  if (!deleted) {
+    return sendJson(res, 404, { error: 'Alert not found' });
+  }
+  broadcast('alert_deleted', { id: Number(req.params.id) });
+  return sendJson(res, 200, { message: 'Alert deleted' });
 });
 
 app.get('/api/anomalies', async (req, res) => {
@@ -809,6 +830,11 @@ wsManager.init(wss);
 async function bootstrap() {
   db = await createDatabase(config.mysql);
 
+  // ── MQTT : connexion au broker pour recevoir les données ESP32 ──────────
+  if (process.env.MQTT_ENABLED !== 'false') {
+    mqttService.init({ db, ingestReading, broadcast, updateNode, insertAlert });
+  }
+
   server.listen(config.port, config.host, () => {
     console.log(`Meteo backend running on http://${config.host}:${config.port}`);
     console.log(`MySQL mode: ${db.runtime.mode}`);
@@ -819,6 +845,32 @@ async function bootstrap() {
       console.log(`Frontend: dist not found — use Vite dev server or run "npm run build" in frontend/`);
     }
   });
+
+  // ── Simulation des capteurs ─────────────────────────────────
+  const SIM_MS = parseInt(process.env.SIMULATION_INTERVAL_MS) || 0;
+  if (SIM_MS > 0) {
+    const prevReadings = {};
+    const runSim = async () => {
+      try {
+        const nodes = await listNodes(db);
+        for (const node of nodes) {
+          const reading = generateSensorReading(
+            node.id,
+            Math.floor(Date.now() / 1000),
+            prevReadings[node.id] || null
+          );
+          prevReadings[node.id] = reading;
+          await ingestReading(reading, 'simulator');
+        }
+      } catch (e) {
+        console.error('[SIM] Erreur:', e.message);
+      }
+    };
+    // Première lecture immédiate au démarrage
+    await runSim();
+    setInterval(runSim, SIM_MS);
+    console.log(`[SIM] Simulation activée — intervalle ${SIM_MS / 1000}s`);
+  }
 }
 
 bootstrap().catch((error) => {

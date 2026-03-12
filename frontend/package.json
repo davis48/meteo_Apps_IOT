@@ -14,8 +14,12 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "leaflet": "^1.9.4",
+    "lucide": "^0.577.0",
+    "lucide-react": "^0.577.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-leaflet": "^5.0.0",
     "recharts": "^3.7.0"
   },
   "devDependencies": {

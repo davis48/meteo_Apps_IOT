@@ -4,7 +4,10 @@ const net = require('net');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const mysql = require('mysql2/promise');
-const { createDB: createEmbeddedMySQL } = require('mysql-memory-server');
+// mysql-memory-server est optionnel — uniquement chargé si MYSQL_EMBEDDED=true
+const createEmbeddedMySQL = process.env.MYSQL_EMBEDDED === 'true'
+  ? (() => { try { return require('mysql-memory-server').createDB; } catch { return null; } })()
+  : null;
 const { buildPredictionSet } = require('./generator');
 
 const BACKEND_ROOT = path.resolve(__dirname, '..');
@@ -478,6 +481,11 @@ async function updateNode(db, nodeId, fields) {
   return getNodeById(db, nodeId);
 }
 
+async function deleteNode(db, nodeId) {
+  const [result] = await db.query('DELETE FROM nodes WHERE id = ?', [nodeId]);
+  return result.affectedRows > 0;
+}
+
 async function updateNodeStatuses(db, offlineAfterSec = 3600) {
   const now = Math.floor(Date.now() / 1000);
   await db.query("UPDATE nodes SET status = CASE WHEN (? - last_seen) > ? THEN 'offline' ELSE 'online' END, updated_at = ?", [now, offlineAfterSec, now]);
@@ -782,6 +790,11 @@ async function acknowledgeAlert(db, alertId) {
   return rows[0] || null;
 }
 
+async function deleteAlert(db, alertId) {
+  const [result] = await db.query('DELETE FROM alerts WHERE id = ?', [alertId]);
+  return result.affectedRows > 0;
+}
+
 async function listAnomalies(db, filters = {}) {
   const { node_id: nodeId, limit = 100 } = filters;
   const where = ['(is_anomaly = 1 OR anomaly_score >= 0.7)'];
@@ -997,6 +1010,8 @@ async function getAIMetrics(db) {
 module.exports = {
   acknowledgeAlert,
   createDatabase,
+  deleteAlert,
+  deleteNode,
   getAIMetrics,
   getDashboardSummary,
   getLastSensorReadingForNode,
