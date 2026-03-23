@@ -6,7 +6,7 @@ import CustomTooltip from '../components/charts/CustomTooltip';
 import Icon from '../components/ui/Icon';
 import {
   fmt, tsDate, ts, toChartData, groupByNode,
-  computeFloodRisk, computeStormRisk, riskLevel, SENSOR_COLORS,
+  riskLevel, SENSOR_COLORS,
 } from '../utils/helpers';
 
 // ── Mini horizontal progress bar ──────────────────────────────
@@ -53,10 +53,13 @@ function ForecastCard({ pred, accent }) {
       <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Données insuffisantes</div>
     </div>
   );
-  const flood = computeFloodRisk({ rain_level: pred.predicted_humidity > 80 ? 15 : 2, pressure: pred.predicted_pressure });
-  const storm = computeStormRisk({ wind_speed: 20, pressure: pred.predicted_pressure });
-  const extreme = pred.extreme_event_probability;
-  const rl = riskLevel(Math.max(flood, storm, extreme * 100));
+  // Risques calculés à partir des données de prédiction disponibles (pas de rain_level/wind prédit)
+  const extreme = pred.extreme_event_probability ?? 0;
+  const isFlood = pred.predicted_humidity > 80 || (pred.event_type || '').toLowerCase().includes('flood');
+  const isStorm = (pred.event_type || '').toLowerCase().includes('storm') || (pred.event_type || '').toLowerCase().includes('vent');
+  const flood = Math.round(extreme * 100 * (isFlood ? 1 : 0.35));
+  const storm = Math.round(extreme * 100 * (isStorm ? 1 : 0.25));
+  const rl = riskLevel(Math.round(extreme * 100));
 
   return (
     <div className="forecast-card" style={{ '--card-accent': accent }}>
@@ -99,7 +102,8 @@ function ForecastCard({ pred, accent }) {
 }
 
 // ============================================================
-const HORIZON_COLORS = { 3: '#3b82f6', 6: '#8b5cf6', 12: '#f59e0b', 24: '#ef4444' };
+// Couleurs par horizon : du plus proche (bleu) au plus lointain (orange plus incertain)
+const HORIZON_COLORS = { 3: '#3b82f6', 6: '#06b6d4', 12: '#f97316', 24: '#64748b' };
 
 export default function ForecastPage({ predictions = [], aiMetrics, history = [], nodes = [] }) {
   // Group predictions by horizon
@@ -218,10 +222,10 @@ export default function ForecastPage({ predictions = [], aiMetrics, history = []
                 <span className="badge badge-blue">Embarqué ESP32</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <ModelGauge label="Précision" value={aiMetrics.tinyml?.accuracy} color="#3b82f6" />
-                <ModelGauge label="Rappel (Recall)" value={aiMetrics.tinyml?.recall} color="#8b5cf6" />
-                <ModelGauge label="Score F1" value={aiMetrics.tinyml?.f1_score} color="#22c55e" />
-                <ModelGauge label="Score AUC-ROC" value={aiMetrics.tinyml?.auc_roc} color="#f59e0b" />
+                <ModelGauge label="Précision"     value={aiMetrics.tinyml?.accuracy} color="var(--accent)" />
+                <ModelGauge label="Rappel (Recall)" value={aiMetrics.tinyml?.recall}   color="var(--accent)" />
+                <ModelGauge label="Score F1"       value={aiMetrics.tinyml?.f1_score}  color="var(--accent)" />
+                <ModelGauge label="Score AUC-ROC"  value={aiMetrics.tinyml?.auc_roc}   color="var(--accent)" />
               </div>
               {aiMetrics.tinyml && (
                 <div style={{ marginTop: 14, padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 8, fontSize: 12 }}>
@@ -246,7 +250,7 @@ export default function ForecastPage({ predictions = [], aiMetrics, history = []
                 <ModelGauge label="MAE Température" value={aiMetrics.lstm?.mae_temperature ? 1 - (aiMetrics.lstm.mae_temperature / 10) : null} color="#f97316" />
                 <ModelGauge label="MAE Humidité"    value={aiMetrics.lstm?.mae_humidity    ? 1 - (aiMetrics.lstm.mae_humidity / 30) : null}    color={SENSOR_COLORS.humidity} />
                 <ModelGauge label="MAE Pression"    value={aiMetrics.lstm?.mae_pressure    ? 1 - (aiMetrics.lstm.mae_pressure / 20) : null}    color={SENSOR_COLORS.pressure} />
-                <ModelGauge label="Fiabilité prédictions" value={aiMetrics.lstm?.reliability} color="#22c55e" />
+                <ModelGauge label="Fiabilité prédictions" value={aiMetrics.lstm?.reliability} color="var(--accent)" />
               </div>
               {aiMetrics.lstm && (
                 <div style={{ marginTop: 14, padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 8, fontSize: 12 }}>

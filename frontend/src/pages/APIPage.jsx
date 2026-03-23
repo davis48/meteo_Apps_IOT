@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import Header from '../components/Layout/Header';
 import Badge  from '../components/ui/Badge';
 
 const T = {
@@ -400,11 +399,17 @@ export default function APIPage() {
 
   return (
     <div>
-      <Header title="Documentation API">
-        <Badge color="var(--green)"      bg="var(--green-dim)">REST</Badge>
-        <Badge color="var(--purple)"     bg="var(--purple-dim)">WebSocket</Badge>
-        <Badge color="var(--text-muted)" bg="var(--border)">{ENDPOINTS.length} endpoints</Badge>
-      </Header>
+      <div className="page-header">
+        <div>
+          <div className="page-title">Documentation API</div>
+          <div className="page-subtitle">Référence complète des endpoints REST &amp; WebSocket</div>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <Badge color="var(--green)"      bg="var(--green-dim)">REST</Badge>
+          <Badge color="var(--purple)"     bg="var(--purple-dim)">WebSocket</Badge>
+          <Badge color="var(--text-muted)" bg="var(--border)">{ENDPOINTS.length} endpoints</Badge>
+        </div>
+      </div>
 
       {/* Base URL */}
       <div className="card" style={{ padding: 20, marginBottom: 14 }}>

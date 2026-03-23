@@ -297,14 +297,15 @@ export const trendArrow = (readings = [], field) => {
 };
 
 // ── Color tokens ──────────────────────────────────────────────
+// Palette professionnelle réduite : orange (chaleur), bleu (eau), slate (neutre), rouge (danger)
 export const SENSOR_COLORS = {
-  temperature: '#f97316',
-  humidity:    '#3b82f6',
-  pressure:    '#8b5cf6',
-  wind_speed:  '#06b6d4',
-  rain_level:  '#6366f1',
-  luminosity:  '#f59e0b',
-  anomaly_score: '#ef4444',
+  temperature:   '#f97316',  // orange  — sémantique : chaleur
+  humidity:      '#38bdf8',  // sky-blue — sémantique : eau/vapeur
+  pressure:      '#94a3b8',  // slate   — neutre
+  wind_speed:    '#64748b',  // steel   — neutre/air
+  rain_level:    '#60a5fa',  // blue    — sémantique : précipitation
+  luminosity:    '#fbbf24',  // amber   — sémantique : lumière
+  anomaly_score: '#ef4444',  // rouge   — sémantique : danger
 };
 
 export const SEVERITY_COLORS = {

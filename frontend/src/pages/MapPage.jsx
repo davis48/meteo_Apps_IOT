@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, Tooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
-  computeFloodRisk, computeStormRisk, computeOverallRisk,
   riskLevel, fmt, timeAgo, SENSOR_COLORS,
 } from '../utils/helpers';
 import Icon from '../components/ui/Icon';
@@ -148,9 +147,10 @@ export default function MapPage({ nodes = [], latestByNode = {}, onNav }) {
   const stationsData = useMemo(() =>
     validNodes.map((node) => {
       const latest    = latestByNode[node.id];
-      const floodRisk = latest ? computeFloodRisk(latest)  : 0;
-      const stormRisk = latest ? computeStormRisk(latest)  : 0;
-      const overall   = latest ? computeOverallRisk(latest) : 0;
+      // Utiliser les champs pré-calculés par le backend
+      const floodRisk = latest?.flood_risk ?? 0;
+      const stormRisk = latest?.storm_risk ?? 0;
+      const overall   = latest?.overall_risk ?? 0;
       const risk      = riskLevel(overall);
       return { node, latest, risk, floodRisk, stormRisk, overallRisk: overall };
     }),

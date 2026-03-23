@@ -2,7 +2,6 @@ import {
   Area, AreaChart, CartesianGrid,
   Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import Header          from '../components/Layout/Header';
 import Badge           from '../components/ui/Badge';
 import MiniGauge       from '../components/ui/MiniGauge';
 import CollapsibleCard from '../components/ui/CollapsibleCard';
@@ -50,11 +49,15 @@ export default function AIPage({ history, predictions, aiMetrics }) {
 
   return (
     <div>
-      <Header title="Intelligence Artificielle">
+      <div className="page-header">
+        <div>
+          <div className="page-title">Intelligence Artificielle</div>
+          <div className="page-subtitle">Modèles TinyML embarqués &middot; Détection d’anomalies &middot; Prévisions</div>
+        </div>
         <Badge color="var(--purple)" bg="var(--purple-dim)">
           {embedded.status === 'active' && cloud.status === 'active' ? 'TinyML + LSTM actifs' : 'Modèles en vérification'}
         </Badge>
-      </Header>
+      </div>
 
       {/* Cartes modèles côte à côte */}
       <div className="grid grid-2" style={{ marginBottom: 14 }}>

@@ -4,34 +4,45 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import LiveDot from '../components/ui/LiveDot';
-import Icon from '../components/ui/Icon';
+import { Droplets, Wind, Gauge, CloudRain, Sun, Cloud, CloudLightning, Snowflake, Thermometer, Waves } from 'lucide-react';
 import {
   fmt, ts, timeAgo,
-  computeFloodRisk, computeStormRisk, computeAQI, aqiCategory,
-  riskLevel, weatherCondition, windBeaufort, SENSOR_COLORS,
+  aqiCategory, riskLevel, SENSOR_COLORS, weatherCondition,
 } from '../utils/helpers';
 
-// ── Color palette for multi-node charts ──────────────────────
-const NODE_COLORS = ['#f97316', '#3b82f6', '#22c55e', '#a855f7', '#ec4899', '#06b6d4', '#f59e0b', '#10b981'];
+// ── Palette professionnelle pour graphiques multi-nœuds ──────────────────
+const NODE_COLORS = ['#3b82f6', '#f97316', '#10b981', '#6366f1', '#94a3b8', '#06b6d4', '#fbbf24', '#64748b'];
 
-// ── Weather condition emoji map ───────────────────────────────
-const CONDITION_EMOJIS = {
-  'Tempête': '⛈', 'Forte pluie': '🌧', 'Pluie': '🌦',
-  'Vent violent': '💨', 'Dépression': '🌩', 'Nuageux': '⛅',
-  'Ensoleillé': '☀️', 'Partiellement nuageux': '🌤',
-  'Chaud': '🌡', 'Gel': '❄️', 'Stable': '🌡', '—': '—',
+// ── Condition météo → composant Lucide ───────────────────────
+const COND_ICON_MAP = {
+  'Tempête': CloudLightning, 'Forte pluie': CloudRain, 'Pluie': CloudRain,
+  'Vent violent': Wind, 'Dépression': Cloud, 'Nuageux': Cloud,
+  'Ensoleillé': Sun, 'Partiellement nuageux': Sun,
+  'Chaud': Thermometer, 'Gel': Snowflake, 'Stable': Cloud,
 };
+
+const ICON_MAP = {
+  humidity: Droplets, wind: Wind, pressure: Gauge, rain: CloudRain,
+  luminosity: Sun, flood: Waves, storm: CloudLightning, weather: Cloud,
+  thermometer: Thermometer,
+};
+
+function MeteoIcon({ name, size = 16, color, style }) {
+  const C = ICON_MAP[name] || Cloud;
+  return <C size={size} color={color} style={style} />;
+}
 
 // ── Weather condition symbol ──────────────────────────────────
 function WeatherSymbol({ condition, size = 52 }) {
+  const C = COND_ICON_MAP[condition] || Cloud;
   return (
     <div style={{
       width: size, height: size, borderRadius: 14,
       background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: size * 0.48, flexShrink: 0,
+      flexShrink: 0,
     }}>
-      {CONDITION_EMOJIS[condition] || '🌡'}
+      <C size={Math.round(size * 0.52)} color="var(--text-secondary)" />
     </div>
   );
 }
@@ -80,7 +91,7 @@ function MetricBar({ label, icon, value, unit, pct, color, note }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
-          <Icon name={icon} size={13} color={color} />
+          <MeteoIcon name={icon} size={13} color={color} />
           {label}
         </span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
@@ -102,6 +113,7 @@ function MetricBar({ label, icon, value, unit, pct, color, note }) {
 
 // ── 7-day forecast card ──────────────────────────────────────
 function DayCard({ day, isToday }) {
+  const CondIcon = COND_ICON_MAP[day.condLabel] || Cloud;
   const maxT = day.temp_max != null ? Math.round(day.temp_max) : '—';
   const minT = day.temp_min != null ? Math.round(day.temp_min) : '—';
   const rain  = day.rain_prob != null ? Math.round(day.rain_prob) : 0;
@@ -119,13 +131,15 @@ function DayCard({ day, isToday }) {
         color: isToday ? 'var(--accent)' : 'var(--text-muted)',
         textTransform: 'uppercase', letterSpacing: '.5px',
       }}>{day.dayName}</div>
-      <div style={{ fontSize: 24, lineHeight: 1 }}>{day.emoji}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <CondIcon size={20} color="var(--text-muted)" />
+      </div>
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>{maxT}°</div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>{minT}°</div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-        <span style={{ fontSize: 9 }}>💧</span>
+        <Droplets size={10} color="var(--text-muted)" />
         <span style={{ fontSize: 11, fontWeight: 700, color: rainColor }}>{rain}%</span>
       </div>
       {rain > 0 && (
@@ -147,7 +161,7 @@ function buildEmptyDay(d) {
   date.setDate(date.getDate() + d);
   const dayName = d === 0 ? 'Auj.' : d === 1 ? 'Dem.' :
     date.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '').slice(0, 3);
-  return { dayName, temp_max: null, temp_min: null, rain_prob: null, emoji: '—', source: 'none' };
+  return { dayName, temp_max: null, temp_min: null, rain_prob: null, condLabel: '—', source: 'none' };
 }
 
 function buildExtrap(dayName, latest, d) {
@@ -162,20 +176,19 @@ function buildExtrap(dayName, latest, d) {
     wind_speed: latest.wind_speed,
     luminosity: latest.luminosity,
   };
-  const c = weatherCondition(extrapReading);
   return {
     dayName,
     temp_max: latest.temperature + shift + 2,
     temp_min: latest.temperature + shift - 4,
     rain_prob: Math.min(90, basePrecip + d * 2),
-    emoji: CONDITION_EMOJIS[c.label] || '🌡',
+    condLabel: weatherCondition(extrapReading).label,
     source: 'estimated',
   };
 }
 
 function buildWeekForecast(history, latest, predictions) {
   if (!latest) return Array.from({ length: 7 }, (_, i) => buildEmptyDay(i));
-  const toEmoji = (r) => CONDITION_EMOJIS[weatherCondition(r).label] || '🌡';
+  const toCondLabel = (r) => weatherCondition(r).label;
   const now = new Date();
   const days = [];
   for (let d = 0; d < 7; d++) {
@@ -197,7 +210,7 @@ function buildWeekForecast(history, latest, predictions) {
         rain_prob: rains.length
           ? Math.min(100, (rains.filter((v) => v > 1).length / rains.length) * 100 * 2)
           : (latest.rain_level > 2 ? 60 : 10),
-        emoji: toEmoji(latest), source: 'actual',
+        condLabel: toCondLabel(latest), source: 'actual',
       });
     } else if (d === 1) {
       const pred = (predictions || []).find((p) => p.horizon_hours === 24);
@@ -206,7 +219,7 @@ function buildWeekForecast(history, latest, predictions) {
           dayName,
           temp_max: pred.predicted_temp + 2, temp_min: pred.predicted_temp - 3,
           rain_prob: Math.min(100, pred.extreme_event_probability * 120),
-          emoji: toEmoji({ temperature: pred.predicted_temp, humidity: pred.predicted_humidity, pressure: pred.predicted_pressure, rain_level: pred.extreme_event_probability > 0.4 ? 8 : 1, wind_speed: latest.wind_speed }),
+          condLabel: toCondLabel({ temperature: pred.predicted_temp, humidity: pred.predicted_humidity, pressure: pred.predicted_pressure, rain_level: pred.extreme_event_probability > 0.4 ? 8 : 1, wind_speed: latest.wind_speed }),
           source: 'lstm',
         });
       } else {
@@ -219,7 +232,7 @@ function buildWeekForecast(history, latest, predictions) {
         temp_max: pred.predicted_temp + 1 + deterministicShift(latest.temperature, d),
         temp_min: pred.predicted_temp - 4 + deterministicShift(latest.temperature, d),
         rain_prob: Math.min(100, pred.extreme_event_probability * 100 + 10),
-        emoji: toEmoji({ temperature: pred.predicted_temp, humidity: pred.predicted_humidity, pressure: pred.predicted_pressure, rain_level: 2, wind_speed: latest.wind_speed }),
+        condLabel: toCondLabel({ temperature: pred.predicted_temp, humidity: pred.predicted_humidity, pressure: pred.predicted_pressure, rain_level: 2, wind_speed: latest.wind_speed }),
         source: 'estimated',
       } : buildExtrap(dayName, latest, d));
     } else {
@@ -323,12 +336,13 @@ export default function LiveWeatherPage({ nodes = [], historyByNode = {}, latest
     }));
   }, [isAllMode, historyByNode, nodes, last24h, cutoff24h]);
 
-  const floodRisk = computeFloodRisk(latest);
-  const stormRisk = computeStormRisk(latest);
-  const aqi       = computeAQI(latest);
+  // Utiliser les champs pré-calculés par le backend
+  const floodRisk = latest?.flood_risk ?? 0;
+  const stormRisk = latest?.storm_risk ?? 0;
+  const aqi       = latest?.aqi ?? 0;
   const aqiCat    = aqiCategory(aqi);
-  const condition = weatherCondition(latest);
-  const beaufort  = latest?.wind_speed != null ? windBeaufort(latest.wind_speed) : null;
+  const condition = { label: latest?.condition_label ?? '—', severity: latest?.condition_severity ?? 'none' };
+  const beaufort  = latest ? { scale: latest.beaufort_scale ?? 0, label: latest.beaufort_label ?? 'Calme' } : null;
   const isAnomaly = (latest?.anomaly_score ?? 0) >= 0.7 || latest?.is_anomaly;
   const floodRL   = riskLevel(floodRisk);
   const stormRL   = riskLevel(stormRisk);
@@ -407,7 +421,7 @@ export default function LiveWeatherPage({ nodes = [], historyByNode = {}, latest
           ].map(({ icon, label, value, unit, color, note }) => (
             <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 34, height: 34, borderRadius: 9, background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Icon name={icon} size={16} color={color} />
+                <MeteoIcon name={icon} size={16} color={color} />
               </div>
               <div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>{label}</div>
@@ -463,7 +477,7 @@ export default function LiveWeatherPage({ nodes = [], historyByNode = {}, latest
 
       {/* ── Temperature chart ─────────────────────────────────── */}
       <CollapsibleCard
-        title="🌡 Températures — 24 dernières heures"
+        title="Températures — 24 dernières heures"
         subtitle={isAllMode
           ? `${nodes.length} stations — une courbe par station`
           : 'Évolution de la température sur la journée'
@@ -553,7 +567,7 @@ export default function LiveWeatherPage({ nodes = [], historyByNode = {}, latest
 
       {/* ── Precipitation chart ───────────────────────────────── */}
       <CollapsibleCard
-        title="🌧 Précipitations — 24 dernières heures"
+        title="Précipitations — 24 dernières heures"
         subtitle={isAllMode
           ? 'Moyenne des précipitations sur toutes les stations (mm)'
           : "Hauteur d'eau mesurée heure par heure (mm)"
@@ -651,7 +665,7 @@ export default function LiveWeatherPage({ nodes = [], historyByNode = {}, latest
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
-                <Icon name={icon} size={16} color={rl.color} /> {label}
+                <MeteoIcon name={icon} size={16} color={rl.color} /> {label}
               </span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span className={`risk-badge ${rl.cls}`} style={{ fontSize: 9 }}>{rl.label}</span>

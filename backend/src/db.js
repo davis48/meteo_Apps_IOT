@@ -12,33 +12,107 @@ const { buildPredictionSet } = require('./generator');
 
 const BACKEND_ROOT = path.resolve(__dirname, '..');
 
+// Stations couvrant les 10 districts / régions de Côte d'Ivoire
 const DEFAULT_NODES = [
   {
-    id: 'node-001',
-    name: 'Station Alpha',
-    location: 'Site Nord',
+    id: 'node-abidjan',
+    name: 'Station Abidjan',
+    location: 'Plateau, Abidjan',
+    region: 'Lagunes',
     latitude: 5.354,
     longitude: -4.004,
     status: 'online',
     firmware_version: 'v1.2.0',
   },
   {
-    id: 'node-002',
-    name: 'Station Beta',
-    location: 'Site Sud',
-    latitude: 5.28,
-    longitude: -3.98,
+    id: 'node-sanpedro',
+    name: 'Station San-Pédro',
+    location: 'San-Pédro Port',
+    region: 'Bas-Sassandra',
+    latitude: 4.748,
+    longitude: -6.638,
+    status: 'online',
+    firmware_version: 'v1.2.0',
+  },
+  {
+    id: 'node-daloa',
+    name: 'Station Daloa',
+    location: 'Daloa Centre',
+    region: 'Sassandra-Marahoué',
+    latitude: 6.887,
+    longitude: -6.451,
     status: 'online',
     firmware_version: 'v1.1.5',
   },
   {
-    id: 'node-003',
-    name: 'Station Gamma',
-    location: 'Site Est',
-    latitude: 5.39,
-    longitude: -3.95,
-    status: 'offline',
+    id: 'node-abengourou',
+    name: 'Station Abengourou',
+    location: 'Abengourou Est',
+    region: 'Comoé',
+    latitude: 6.729,
+    longitude: -3.496,
+    status: 'online',
+    firmware_version: 'v1.1.5',
+  },
+  {
+    id: 'node-yamoussoukro',
+    name: 'Station Yamoussoukro',
+    location: 'Yamoussoukro Centre',
+    region: 'Lacs',
+    latitude: 6.820,
+    longitude: -5.279,
+    status: 'online',
+    firmware_version: 'v1.1.0',
+  },
+  {
+    id: 'node-bouake',
+    name: 'Station Bouaké',
+    location: 'Bouaké Centre',
+    region: 'Vallée du Bandama',
+    latitude: 7.691,
+    longitude: -5.031,
+    status: 'online',
+    firmware_version: 'v1.1.0',
+  },
+  {
+    id: 'node-man',
+    name: 'Station Man',
+    location: 'Man, Montagnes',
+    region: 'Montagnes',
+    latitude: 7.412,
+    longitude: -7.554,
+    status: 'online',
     firmware_version: 'v1.0.8',
+  },
+  {
+    id: 'node-bondoukou',
+    name: 'Station Bondoukou',
+    location: 'Bondoukou Nord-Est',
+    region: 'Zanzan',
+    latitude: 8.037,
+    longitude: -2.800,
+    status: 'online',
+    firmware_version: 'v1.0.8',
+  },
+  {
+    id: 'node-korhogo',
+    name: 'Station Korhogo',
+    location: 'Korhogo Nord',
+    region: 'Savanes',
+    latitude: 9.462,
+    longitude: -5.629,
+    status: 'online',
+    firmware_version: 'v1.0.5',
+  },
+  {
+    id: 'node-odienne',
+    name: 'Station Odienné',
+    location: 'Odienné Nord-Ouest',
+    region: 'Denguélé',
+    latitude: 9.508,
+    longitude: -7.567,
+    status: 'offline',
+    firmware_version: 'v1.0.5',
   },
 ];
 
@@ -74,6 +148,7 @@ function normalizeNode(row) {
     id: row.id,
     name: row.name,
     location: row.location,
+    region: row.region || null,
     latitude: Number(row.latitude),
     longitude: Number(row.longitude),
     status: row.status,
@@ -340,6 +415,7 @@ async function initSchema(db) {
       id VARCHAR(64) PRIMARY KEY,
       name VARCHAR(128) NOT NULL,
       location VARCHAR(255),
+      region VARCHAR(128),
       latitude DECIMAL(10,6),
       longitude DECIMAL(10,6),
       status ENUM('online','offline') NOT NULL DEFAULT 'offline',
@@ -407,6 +483,8 @@ async function initSchema(db) {
   for (const table of tables) {
     await ensureColumn(db, table, 'updated_at', 'BIGINT NOT NULL DEFAULT 0');
   }
+  // Migration: add region column to nodes (for existing databases)
+  await ensureColumn(db, 'nodes', 'region', 'VARCHAR(128) NULL');
 
   await ensureIndex(db, 'sensor_data', 'idx_sensor_node_time', 'CREATE INDEX idx_sensor_node_time ON sensor_data(node_id, timestamp DESC)');
   await ensureIndex(db, 'sensor_data', 'idx_sensor_time', 'CREATE INDEX idx_sensor_time ON sensor_data(timestamp DESC)');
@@ -427,17 +505,14 @@ async function seedDatabase(db) {
 }
 
 async function seedNodesIfNeeded(db) {
-  const [rows] = await db.query('SELECT COUNT(*) AS count FROM nodes');
-  if (rows[0].count > 0) return;
-
+  // INSERT IGNORE : insère chaque node régionale uniquement si elle n'existe pas encore.
+  // Les anciens nodes (node-001 etc.) déjà en base restent intacts.
   const now = Math.floor(Date.now() / 1000);
   for (const node of DEFAULT_NODES) {
     await db.query(
-      `
-      INSERT INTO nodes (id, name, location, latitude, longitude, status, firmware_version, last_seen, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-      [node.id, node.name, node.location, node.latitude, node.longitude, node.status, node.firmware_version, node.status === 'online' ? now : now - 3700, now, now],
+      `INSERT IGNORE INTO nodes (id, name, location, region, latitude, longitude, status, firmware_version, last_seen, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [node.id, node.name, node.location, node.region || null, node.latitude, node.longitude, node.status, node.firmware_version, node.status === 'online' ? now : now - 3700, now, now],
     );
   }
 }
@@ -457,7 +532,7 @@ async function touchNode(db, nodeId, timestampSec = Math.floor(Date.now() / 1000
 }
 
 async function updateNode(db, nodeId, fields) {
-  const allowedFields = ['name', 'location', 'latitude', 'longitude', 'firmware_version', 'status'];
+  const allowedFields = ['name', 'location', 'region', 'latitude', 'longitude', 'firmware_version', 'status'];
   const setClauses = [];
   const values = [];
 
@@ -823,7 +898,13 @@ async function listAnomalies(db, filters = {}) {
 
 async function refreshPredictions(db) {
   const now = Math.floor(Date.now() / 1000);
-  const latestNodeReading = await getLastSensorReadingForNode(db, 'node-001');
+
+  // Utiliser la lecture la plus récente de n'importe quel node (pas seulement node-001)
+  const [latestRows] = await db.query(
+    'SELECT * FROM sensor_data ORDER BY timestamp DESC LIMIT 1',
+  );
+  const latestNodeReading = latestRows[0] || null;
+  const nodeIdForPred = latestNodeReading?.node_id || 'node-abidjan';
   const preds = buildPredictionSet(latestNodeReading);
 
   const cleanupBefore = now - 14 * 86400;
@@ -838,7 +919,7 @@ async function refreshPredictions(db) {
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
-      [crypto.randomUUID(), 'node-001', now, pred.horizon_hours, pred.predicted_temp, pred.predicted_humidity, pred.predicted_pressure, pred.extreme_event_probability, pred.event_type, 'lstm-sim', now, now],
+      [crypto.randomUUID(), nodeIdForPred, now, pred.horizon_hours, pred.predicted_temp, pred.predicted_humidity, pred.predicted_pressure, pred.extreme_event_probability, pred.event_type, 'lstm-sim', now, now],
     );
   }
 

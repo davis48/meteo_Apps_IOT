@@ -3,7 +3,6 @@ import {
   Area, AreaChart, CartesianGrid, Legend,
   Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import Header          from '../components/Layout/Header';
 import MiniGauge       from '../components/ui/MiniGauge';
 import LiveDot         from '../components/ui/LiveDot';
 import CollapsibleCard from '../components/ui/CollapsibleCard';
@@ -55,14 +54,16 @@ export default function SensorsPage({ nodes, historyByNode, latestByNode }) {
 
   return (
     <div>
-      <Header
-        title="Données Capteurs"
-        subtitle={selectedNodeObj
-          ? <><LiveDot active={selectedNodeObj.status === 'online'} /> {selectedNodeObj.name} — {selectedNodeObj.location || 'Emplacement inconnu'}</>
-          : undefined
-        }
-      >
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      <div className="page-header">
+        <div>
+          <div className="page-title">Données Capteurs</div>
+          {selectedNodeObj && (
+            <div className="page-subtitle">
+              <LiveDot active={selectedNodeObj.status === 'online'} /> {selectedNodeObj.name} — {selectedNodeObj.location || 'Emplacement inconnu'}
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {nodes.map((n) => (
             <button
               key={n.id}
@@ -74,15 +75,14 @@ export default function SensorsPage({ nodes, historyByNode, latestByNode }) {
               {n.name}
             </button>
           ))}
-        </div>
-        <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
           {['6h', '24h', '7d'].map((p) => (
             <button key={p} onClick={() => setPeriod(p)} className={`btn-ghost${period === p ? ' active' : ''}`}>
               {p}
             </button>
           ))}
         </div>
-      </Header>
+      </div>
 
       {/* 6 Gauge cards */}
       <div className="grid grid-3" style={{ marginBottom: 14 }}>

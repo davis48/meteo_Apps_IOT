@@ -4,21 +4,21 @@ import {
   Tooltip, XAxis, YAxis, Legend, ReferenceLine,
 } from 'recharts';
 import {
-  fmt, tsDate, computeStats, trendArrow, SENSOR_COLORS,
-  computeFloodRisk, computeStormRisk, computeOverallRisk, riskLevel,
+  fmt, tsDate, computeStats, trendArrow, SENSOR_COLORS, riskLevel,
 } from '../utils/helpers';
 import CustomTooltip from '../components/charts/CustomTooltip';
+import Icon from '../components/ui/Icon';
 
 // Distinct colors for up to 6 stations
-const STATION_COLORS = ['#3b82f6', '#f97316', '#22c55e', '#a855f7', '#ec4899', '#14b8a6'];
+const STATION_COLORS = ['#3b82f6', '#f97316', '#22c55e', '#64748b', '#06b6d4', '#14b8a6'];
 
 const METRICS = [
-  { key: 'temperature',   label: 'Température',   unit: '°C',   color: '#f97316', icon: '🌡' },
-  { key: 'humidity',      label: 'Humidité',       unit: '%',    color: SENSOR_COLORS.humidity, icon: '💧' },
-  { key: 'pressure',      label: 'Pression',       unit: 'hPa',  color: SENSOR_COLORS.pressure, icon: '⬛' },
-  { key: 'wind_speed',    label: 'Vent',           unit: 'km/h', color: SENSOR_COLORS.wind_speed, icon: '💨' },
-  { key: 'rain_level',    label: 'Pluie',          unit: 'mm',   color: SENSOR_COLORS.rain_level, icon: '🌧' },
-  { key: 'luminosity',    label: 'Luminosité',     unit: 'lux',  color: SENSOR_COLORS.luminosity, icon: '☀️' },
+  { key: 'temperature',   label: 'Température',   unit: '°C',   color: '#f97316',              icon: 'thermometer' },
+  { key: 'humidity',      label: 'Humidité',       unit: '%',    color: SENSOR_COLORS.humidity,  icon: 'humidity'    },
+  { key: 'pressure',      label: 'Pression',       unit: 'hPa',  color: SENSOR_COLORS.pressure,  icon: 'pressure'    },
+  { key: 'wind_speed',    label: 'Vent',           unit: 'km/h', color: SENSOR_COLORS.wind_speed, icon: 'wind'       },
+  { key: 'rain_level',    label: 'Pluie',          unit: 'mm',   color: SENSOR_COLORS.rain_level, icon: 'rain'       },
+  { key: 'luminosity',    label: 'Luminosité',     unit: 'lux',  color: SENSOR_COLORS.luminosity, icon: 'luminosity' },
 ];
 
 const PERIODS = [
@@ -81,8 +81,8 @@ function RankCard({ metric, nodes, latestByNode, stationColors }) {
       border: '1px solid var(--border-default)',
       borderRadius: 12, padding: '12px 16px',
     }}>
-      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 6 }}>
-        {metric.icon} {metric.label}
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+        <Icon name={metric.icon} size={13} color="var(--text-muted)" />{metric.label}
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
@@ -223,7 +223,7 @@ export default function ComparisonPage({ nodes = [], historyByNode = {}, latestB
       const s      = computeStats(rows, metric);
       const trend  = trendArrow(rows, metric);
       const latest = latestByNode[n.id];
-      const overall = latest ? computeOverallRisk(latest) : 0;
+      const overall = latest?.overall_risk ?? 0;
       return { node: n, stats: s, trend, risk: riskLevel(overall) };
     }),
     [nodes, selectedNodeIds, historyByNode, latestByNode, metric, period] // eslint-disable-line
@@ -350,7 +350,7 @@ export default function ComparisonPage({ nodes = [], historyByNode = {}, latestB
               className={`tab${metric === key ? ' active' : ''}`}
               style={{ fontSize: 11 }}
             >
-              {icon} {label} ({unit})
+              <Icon name={icon} size={12} color="currentColor" /> {label} ({unit})
             </button>
           ))}
         </div>

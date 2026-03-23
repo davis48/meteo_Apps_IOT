@@ -7,7 +7,8 @@ import { SquarePen } from 'lucide-react';
 import { fmt, tsDate, timeAgo, computeOverallRisk, riskLevel, fetchApi } from '../utils/helpers';
 
 function NodeCard({ node, latest, onEdit, onDelete }) {
-  const overallRisk = computeOverallRisk(latest);
+  // Utiliser le champ pré-calculé par le backend si disponible
+  const overallRisk = latest?.overall_risk ?? computeOverallRisk(latest);
   const rl = riskLevel(overallRisk);
 
   return (

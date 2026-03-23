@@ -7,8 +7,7 @@ import {
 } from 'lucide-react';
 import {
   tsDate, timeAgo,
-  computeFloodRisk, computeStormRisk, riskLevel,
-  getRecommendations, fmt,
+  riskLevel, getRecommendations, fmt,
 } from '../utils/helpers';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -150,8 +149,8 @@ export default function AlertsPage({
   // Build derived sets
   const primaryNodeId = Object.keys(latestByNode)[0];
   const primaryLatest = primaryNodeId ? latestByNode[primaryNodeId] : null;
-  const floodRisk     = computeFloodRisk(primaryLatest);
-  const stormRisk     = computeStormRisk(primaryLatest);
+  const floodRisk     = primaryLatest?.flood_risk ?? 0;
+  const stormRisk     = primaryLatest?.storm_risk ?? 0;
   const recs          = getRecommendations(primaryLatest);
 
   const criticals   = alerts.filter((a) => a.severity === 'critical' && !a.acknowledged);

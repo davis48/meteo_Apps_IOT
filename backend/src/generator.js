@@ -1,27 +1,92 @@
 const crypto = require("crypto");
 
+// Profils climatiques par région de Côte d'Ivoire
+// Le sud côtier est chaud/humide, le nord est chaud/sec, les montagnes sont plus fraîches.
 const NODE_PROFILE = {
-  "node-001": {
-    tempBase: 28.2,
-    humidityBase: 71,
-    pressureBase: 1013,
-    luxMax: 720,
+  // ── Abidjan — Lagunes (équatorial chaud et humide) ──────────────────────
+  "node-abidjan": {
+    tempBase: 28.5,
+    humidityBase: 81,
+    pressureBase: 1013.2,
+    luxMax: 700,
+    windBase: 3.8,
+  },
+  // ── San-Pédro — Bas-Sassandra (sub-équatorial côtier) ───────────────────
+  "node-sanpedro": {
+    tempBase: 27.8,
+    humidityBase: 84,
+    pressureBase: 1013.0,
+    luxMax: 680,
+    windBase: 4.6,
+  },
+  // ── Daloa — Sassandra-Marahoué (tropical de transition) ─────────────────
+  "node-daloa": {
+    tempBase: 27.5,
+    humidityBase: 74,
+    pressureBase: 1011.5,
+    luxMax: 730,
+    windBase: 2.9,
+  },
+  // ── Abengourou — Comoé (sub-équatorial attiéen) ──────────────────────────
+  "node-abengourou": {
+    tempBase: 27.9,
+    humidityBase: 77,
+    pressureBase: 1012.0,
+    luxMax: 715,
+    windBase: 2.6,
+  },
+  // ── Yamoussoukro — Lacs (tropical humide, capitale) ─────────────────────
+  "node-yamoussoukro": {
+    tempBase: 27.8,
+    humidityBase: 72,
+    pressureBase: 1011.8,
+    luxMax: 740,
+    windBase: 2.5,
+  },
+  // ── Bouaké — Vallée du Bandama (tropical intermédiaire) ─────────────────
+  "node-bouake": {
+    tempBase: 28.8,
+    humidityBase: 66,
+    pressureBase: 1011.0,
+    luxMax: 760,
     windBase: 3.1,
   },
-  "node-002": {
-    tempBase: 27.4,
-    humidityBase: 73,
-    pressureBase: 1012.3,
-    luxMax: 690,
-    windBase: 3.6,
+  // ── Man — Montagnes (tropical d'altitude, plus frais) ───────────────────
+  "node-man": {
+    tempBase: 25.2,
+    humidityBase: 79,
+    pressureBase: 1008.5,
+    luxMax: 650,
+    windBase: 4.2,
   },
-  "node-003": {
-    tempBase: 29.1,
-    humidityBase: 69,
-    pressureBase: 1011.8,
-    luxMax: 710,
-    windBase: 2.8,
+  // ── Bondoukou — Zanzan (soudano-guinéen est) ────────────────────────────
+  "node-bondoukou": {
+    tempBase: 30.2,
+    humidityBase: 58,
+    pressureBase: 1010.2,
+    luxMax: 790,
+    windBase: 3.3,
   },
+  // ── Korhogo — Savanes (soudano-guinéen chaud) ───────────────────────────
+  "node-korhogo": {
+    tempBase: 33.0,
+    humidityBase: 42,
+    pressureBase: 1009.8,
+    luxMax: 850,
+    windBase: 4.7,
+  },
+  // ── Odienné — Denguélé (soudanien semi-aride, le plus sec/chaud) ────────
+  "node-odienne": {
+    tempBase: 33.8,
+    humidityBase: 37,
+    pressureBase: 1009.0,
+    luxMax: 870,
+    windBase: 5.0,
+  },
+  // Rétrocompatibilité avec les anciens IDs node-001/002/003 ─────────────
+  "node-001": { tempBase: 28.2, humidityBase: 71, pressureBase: 1013, luxMax: 720, windBase: 3.1 },
+  "node-002": { tempBase: 27.4, humidityBase: 73, pressureBase: 1012.3, luxMax: 690, windBase: 3.6 },
+  "node-003": { tempBase: 29.1, humidityBase: 69, pressureBase: 1011.8, luxMax: 710, windBase: 2.8 },
 };
 
 function clamp(value, min, max) {

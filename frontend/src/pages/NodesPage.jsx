@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react';
-import Header        from '../components/Layout/Header';
 import Badge         from '../components/ui/Badge';
 import LiveDot       from '../components/ui/LiveDot';
 import NodeFormModal from '../components/ui/NodeFormModal';
@@ -57,9 +56,11 @@ export default function NodesPage({ nodes, latestByNode, onAdd, onUpdate, onDele
 
   return (
     <div>
-      <Header title="Stations IoT">
-
-        {/* ── Station picker ── */}
+      <div className="page-header">
+        <div>
+          <div className="page-title">Stations IoT</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <div ref={pickerRef} style={{ position: 'relative' }}>
           <button
             className="btn-ghost"
@@ -166,7 +167,8 @@ export default function NodesPage({ nodes, latestByNode, onAdd, onUpdate, onDele
         <button className="btn-add" onClick={() => setShowCreate(true)}>
           + Ajouter une station
         </button>
-      </Header>
+        </div>
+      </div>
 
       {/* Modal — création */}
       {showCreate && (

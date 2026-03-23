@@ -9,6 +9,7 @@ import AirQualityPage   from './pages/AirQualityPage';
 import HistoryPage      from './pages/HistoryPage';
 import StationsPage     from './pages/StationsPage';
 import MapPage          from './pages/MapPage';
+import RegionsPage      from './pages/RegionsPage';
 import ComparisonPage   from './pages/ComparisonPage';
 import { fetchApi, groupByNode } from './utils/helpers';
 
@@ -32,6 +33,7 @@ export default function App() {
   const [isRefreshing,  setIsRefreshing]  = useState(false);
   const [theme,         setTheme]         = useState(savedTheme);
   const [lastUpdated,   setLastUpdated]   = useState(null);
+  const [regionFilter,  setRegionFilter]  = useState(null);  // filtre global par région
 
   // Data
   const [nodes,         setNodes]         = useState([]);
@@ -218,9 +220,25 @@ export default function App() {
   }, []);
 
   // ── Derived ───────────────────────────────────────────────
-  const primaryNodeId  = nodes.find((n) => n.status === 'online')?.id || nodes[0]?.id;
-  const liveData       = primaryNodeId ? latestByNode[primaryNodeId] : null;
   const allHistory     = Object.values(historyByNode).flat();
+
+  // Régions disponibles (liste unique triée)
+  const regions = [...new Set(nodes.map((n) => n.region).filter(Boolean))].sort();
+
+  // Nodes filtrés par la région sélectionnée
+  const filteredNodes = regionFilter
+    ? nodes.filter((n) => n.region === regionFilter)
+    : nodes;
+
+  // Historique filtré selon les nodes de la région
+  const filteredIds = regionFilter ? new Set(filteredNodes.map((n) => n.id)) : null;
+  const displayHistory = filteredIds
+    ? allHistory.filter((r) => filteredIds.has(r.node_id))
+    : allHistory;
+
+  // Station principale et live data (respect du filtre régional)
+  const primaryNodeId  = filteredNodes.find((n) => n.status === 'online')?.id || filteredNodes[0]?.id;
+  const liveData       = primaryNodeId ? latestByNode[primaryNodeId] : null;
   const activeAlertCount = alerts.filter((a) => !a.acknowledged).length;
 
   // ── Loading screen ────────────────────────────────────────
@@ -265,17 +283,17 @@ export default function App() {
         return (
           <DashboardPage
             liveData={liveData}
-            history={allHistory}
+            history={displayHistory}
             alerts={alerts}
             summary={summary}
-            nodes={nodes}
+            nodes={filteredNodes}
             onNav={setPage}
           />
         );
       case 'live':
         return (
           <LiveWeatherPage
-            nodes={nodes}
+            nodes={filteredNodes}
             historyByNode={historyByNode}
             latestByNode={latestByNode}
             predictions={predictions}
@@ -286,15 +304,15 @@ export default function App() {
           <ForecastPage
             predictions={predictions}
             aiMetrics={aiMetrics}
-            history={allHistory}
-            nodes={nodes}
+            history={displayHistory}
+            nodes={filteredNodes}
           />
         );
       case 'alerts':
         return (
           <AlertsPage
             alerts={alerts}
-            nodes={nodes}
+            nodes={filteredNodes}
             onAcknowledge={acknowledgeAlert}
             onDelete={deleteAlert}
             latestByNode={latestByNode}
@@ -304,7 +322,7 @@ export default function App() {
       case 'air-quality':
         return (
           <AirQualityPage
-            nodes={nodes}
+            nodes={filteredNodes}
             historyByNode={historyByNode}
             latestByNode={latestByNode}
           />
@@ -312,7 +330,7 @@ export default function App() {
       case 'history':
         return (
           <HistoryPage
-            nodes={nodes}
+            nodes={filteredNodes}
             historyByNode={historyByNode}
             latestByNode={latestByNode}
           />
@@ -326,10 +344,19 @@ export default function App() {
             onNav={setPage}
           />
         );
+      case 'regions':
+        return (
+          <RegionsPage
+            nodes={nodes}
+            latestByNode={latestByNode}
+            regionFilter={regionFilter}
+            onRegionChange={setRegionFilter}
+          />
+        );
       case 'comparison':
         return (
           <ComparisonPage
-            nodes={nodes}
+            nodes={filteredNodes}
             historyByNode={historyByNode}
             latestByNode={latestByNode}
           />
@@ -365,6 +392,9 @@ export default function App() {
           theme={theme}
           onThemeToggle={toggleTheme}
           lastUpdated={lastUpdated}
+          regions={regions}
+          regionFilter={regionFilter}
+          onRegionChange={setRegionFilter}
         />
 
         <main className="page-content">

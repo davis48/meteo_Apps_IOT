@@ -8,39 +8,42 @@ import LiveDot from '../components/ui/LiveDot';
 import Icon from '../components/ui/Icon';
 import {
   fmt, ts, tsDate, timeAgo, toChartData, groupByNode,
-  computeFloodRisk, computeStormRisk, computeOverallRisk,
-  riskLevel, weatherCondition, pressureTrend, pressureTrendLabel,
-  windBeaufort, SENSOR_COLORS,
+  riskLevel, pressureTrend, pressureTrendLabel,
+  SENSOR_COLORS,
 } from '../utils/helpers';
 
-// ---------- Condition emoji map ----------
-const COND_EMOJI = {
-  storm: '⛈️', 'rain-heavy': '🌧️', rain: '🌦️',
-  'wind-strong': '💨', 'cloud-storm': '⛅', cloud: '☁️',
-  sun: '☀️', 'sun-cloud': '🌤️', hot: '🌡️', frost: '❄️', 'cloud-light': '🌤️',
+// ── Correspondance condition (libellé français backend) → nom d'icône SVG ──
+const COND_ICON = {
+  'Tempête':              'storm',
+  'Forte pluie':          'rain',
+  'Pluie':                'rain',
+  'Vent violent':         'wind',
+  'Dépression':           'cloud',
+  'Nuageux':              'cloud',
+  'Ensoleillé':           'sun',
+  'Partiellement nuageux':'sun',
+  'Chaud':               'thermometer',
+  'Gel':                 'thermometer',
+  'Stable':              'weather',
 };
 
 // ---------- WeatherHero component ----------
 function WeatherHero({ latest, condition, primaryNode }) {
   const temp = latest?.temperature ?? null;
 
-  // Gradient + color based on temperature range
-  const heroStyle = (() => {
-    if (temp === null) return {};
-    if (temp < 5)  return { '--hero-gradient': 'linear-gradient(135deg, rgba(96,165,250,.12) 0%, transparent 65%)',  '--hero-temp-color': '#60a5fa' };
-    if (temp < 15) return { '--hero-gradient': 'linear-gradient(135deg, rgba(34,211,238,.10) 0%, transparent 65%)',  '--hero-temp-color': '#22d3ee' };
-    if (temp < 25) return { '--hero-gradient': 'linear-gradient(135deg, rgba(74,222,128,.08) 0%, transparent 65%)',  '--hero-temp-color': '#4ade80' };
-    if (temp < 32) return { '--hero-gradient': 'linear-gradient(135deg, rgba(251,146,60,.11) 0%, transparent 65%)',  '--hero-temp-color': '#fb923c' };
-    return                { '--hero-gradient': 'linear-gradient(135deg, rgba(248,113,113,.13) 0%, transparent 65%)', '--hero-temp-color': '#f87171' };
-  })();
+  const tempColor = temp == null ? 'var(--text-primary)'
+    : temp >= 32 ? '#f97316'
+    : temp < 18 ? '#60a5fa'
+    : 'var(--text-primary)';
 
-  const emoji = COND_EMOJI[condition?.icon] || '🌤️';
-  const tempColor = heroStyle['--hero-temp-color'] || 'var(--text-primary)';
+  const condIconName = COND_ICON[condition?.icon] || 'weather';
 
   return (
-    <div className="weather-hero" style={heroStyle}>
-      {/* Floating weather emoji */}
-      <div className="weather-hero-emoji">{emoji}</div>
+    <div className="weather-hero">
+      {/* Icône météo */}
+      <div className="weather-hero-emoji" style={{ opacity: 0.5 }}>
+        <Icon name={condIconName} size={52} color="var(--text-secondary)" />
+      </div>
 
       {/* Temperature + condition */}
       <div>
@@ -131,14 +134,20 @@ export default function DashboardPage({ liveData, history, alerts = [], summary,
   const criticalAlerts = activeAlerts.filter((a) => a.severity === 'critical');
   const warningAlerts  = activeAlerts.filter((a) => a.severity === 'warning');
 
-  const floodRisk  = computeFloodRisk(latest);
-  const stormRisk  = computeStormRisk(latest);
-  const overallRisk = computeOverallRisk(latest);
-  const rl         = riskLevel(overallRisk);
-  const condition  = weatherCondition(latest);
-  const pTrend     = pressureTrend(primaryHistory);
-  const pTrendData = pressureTrendLabel(pTrend);
-  const beaufort   = latest ? windBeaufort(latest.wind_speed) : null;
+  // Utiliser les champs pré-calculés par le backend
+  const floodRisk   = latest?.flood_risk ?? 0;
+  const stormRisk   = latest?.storm_risk ?? 0;
+  const overallRisk = latest?.overall_risk ?? 0;
+  const rl          = riskLevel(overallRisk);
+  const condLabel   = latest?.condition_label ?? 'Données météo';
+  const condition   = {
+    label:    condLabel,
+    icon:     COND_ICON[condLabel] || 'weather',
+    severity: latest?.condition_severity ?? 'none',
+  };
+  const pTrend      = latest?.pressure_trend ?? pressureTrend(primaryHistory);
+  const pTrendData  = pressureTrendLabel(pTrend);
+  const beaufort    = latest ? { scale: latest.beaufort_scale ?? 0, label: latest.beaufort_label ?? 'Calme' } : null;
 
   const onlineNodes  = nodes.filter((n) => n.status === 'online').length;
 
@@ -370,34 +379,34 @@ export default function DashboardPage({ liveData, history, alerts = [], summary,
                 <Icon name="stations" size={20} color="var(--accent)" />
               </div>
               <div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{summary.nodes_online ?? '—'}/{summary.nodes_total ?? '—'}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{summary?.nodes?.online ?? '—'}/{summary?.nodes?.total ?? '—'}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Stations actives</div>
               </div>
             </div>
             <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(239,68,68,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name="alerts" size={20} color="var(--risk-high)" />
+              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'var(--accent-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="alerts" size={20} color="var(--accent)" />
               </div>
               <div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{summary.alerts_active ?? '—'}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{summary?.alerts?.active ?? '—'}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Alertes actives</div>
               </div>
             </div>
             <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(220,38,38,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name="anomaly" size={20} color="var(--risk-critical)" />
+              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(239,68,68,.10)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="anomaly" size={20} color="var(--risk-high)" />
               </div>
               <div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{summary.alerts_critical ?? '—'}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{summary?.alerts?.critical_active ?? '—'}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Alertes critiques</div>
               </div>
             </div>
             <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(34,197,94,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name="thermometer" size={20} color="var(--risk-safe)" />
+              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'var(--accent-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="thermometer" size={20} color="var(--accent)" />
               </div>
               <div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{summary.avg_temperature != null ? `${fmt(summary.avg_temperature)}°` : '—'}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{summary?.latest?.avg_temperature != null ? `${fmt(summary.latest.avg_temperature)}°` : '—'}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Temp. moyenne réseau</div>
               </div>
             </div>

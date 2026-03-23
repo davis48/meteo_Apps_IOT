@@ -4,9 +4,10 @@ const NAV_ITEMS = [
   {
     section: 'Vue d\'ensemble',
     items: [
-      { id: 'dashboard',    label: 'Tableau de bord',   icon: 'dashboard' },
-      { id: 'live',         label: 'Météo en direct',   icon: 'weather' },
-      { id: 'map',          label: 'Carte des stations', icon: 'map' },
+      { id: 'dashboard',    label: 'Tableau de bord',    icon: 'dashboard' },
+      { id: 'live',         label: 'Météo en direct',    icon: 'weather' },
+      { id: 'regions',      label: 'Régions de CI',       icon: 'map' },
+      { id: 'map',          label: 'Carte des stations',  icon: 'stations' },
     ],
   },
   {
